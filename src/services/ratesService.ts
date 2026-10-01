@@ -73,6 +73,117 @@ export async function cleanupDeprecatedRates(): Promise<void> {
   }
 }
 
+/**
+ * Synchronize TEFAS fund rates with the user's active asset holdings.
+ * - Only funds with active, positive balance (boughtQty - soldQty > 0) are kept in marketRates.
+ * - If a fund's overall balance is 0 (or no accounts/transactions exist), it is removed from marketRates.
+ * - If a new fund is held with balance > 0, it is automatically added to marketRates with lookup or purchase price.
+ */
+export async function syncTefasFundRatesWithAssets(): Promise<{ activeSymbols: string[]; removedSymbols: string[] }> {
+  try {
+    // 1. Get all ASSET accounts of subType 'FUND' or 'STOCK'
+    const allAccounts = await db.accounts.where('type').equals('ASSET').toArray();
+    const fundAccounts = allAccounts.filter(a => a.subType === 'FUND' || a.subType === 'STOCK');
+    const fundAccountIds = new Set(fundAccounts.map(a => a.id));
+
+    // Map each accountId to its symbol and name
+    const accountMeta = new Map<string, { symbol: string; name: string }>();
+    for (const acc of fundAccounts) {
+      if (acc.symbol) {
+        accountMeta.set(acc.id, { 
+          symbol: acc.symbol.trim().toUpperCase(), 
+          name: acc.name 
+        });
+      }
+    }
+
+    // 2. Query all transactions and compute total net quantity per fund symbol
+    const allTxs = await db.transactions.toArray();
+    const fundBalances = new Map<string, { totalQty: number; name: string; lastPrice?: number }>();
+
+    // Include initialBalance if present on the account
+    for (const acc of fundAccounts) {
+      if (!acc.symbol) continue;
+      const sym = acc.symbol.trim().toUpperCase();
+      const existing = fundBalances.get(sym) || { totalQty: 0, name: acc.name, lastPrice: undefined };
+      if (acc.initialBalance && acc.initialBalance > 0) {
+        existing.totalQty += acc.initialBalance;
+      }
+      fundBalances.set(sym, existing);
+    }
+
+    for (const tx of allTxs) {
+      if (!fundAccountIds.has(tx.accountId)) continue;
+      const meta = accountMeta.get(tx.accountId);
+      if (!meta || !meta.symbol) continue;
+
+      const current = fundBalances.get(meta.symbol) || { totalQty: 0, name: meta.name, lastPrice: undefined };
+      if (tx.type === 'BUY') {
+        current.totalQty += tx.quantity;
+        if (tx.unitPriceTRY && tx.unitPriceTRY > 0) {
+          current.lastPrice = tx.unitPriceTRY;
+        }
+      } else if (tx.type === 'SELL') {
+        current.totalQty -= tx.quantity;
+      }
+      fundBalances.set(meta.symbol, current);
+    }
+
+    // Active symbols are those where overall net balance is strictly positive (> 0)
+    const activeSymbols = new Set<string>();
+    for (const [symbol, data] of fundBalances.entries()) {
+      if (data.totalQty > 0) {
+        activeSymbols.add(symbol);
+      }
+    }
+
+    // 3. Current FUND records in db.marketRates
+    const existingFundRates = await db.marketRates.where('category').equals('FUND').toArray();
+    const removedSymbols: string[] = [];
+
+    // Remove any FUND rate that is NOT active (overall balance is 0 or no longer held)
+    for (const fr of existingFundRates) {
+      const symUpper = fr.symbol.toUpperCase();
+      if (!activeSymbols.has(symUpper)) {
+        await db.marketRates.delete(fr.symbol);
+        removedSymbols.push(fr.symbol);
+      }
+    }
+
+    // Add or ensure active fund rates exist in db.marketRates
+    const todayStr = new Date().toISOString().split('T')[0];
+    const nowISO = new Date().toISOString();
+
+    for (const symbol of activeSymbols) {
+      const existing = await db.marketRates.get(symbol);
+      const fundInfo = lookupTefasFund(symbol);
+      const data = fundBalances.get(symbol);
+
+      if (!existing) {
+        const rateTRY = data?.lastPrice || fundInfo?.estimatedPrice || 10;
+        const name = fundInfo?.name || data?.name || `${symbol} Fonu`;
+
+        await db.marketRates.put({
+          symbol,
+          name,
+          category: 'FUND',
+          rateTRY,
+          changeDailyPct: 0.5,
+          source: 'TEFAS',
+          dataDate: todayStr,
+          updatedAt: nowISO,
+          isManualOverride: false
+        });
+      }
+    }
+
+    return { activeSymbols: Array.from(activeSymbols), removedSymbols };
+  } catch (err) {
+    console.warn('syncTefasFundRatesWithAssets error:', err);
+    return { activeSymbols: [], removedSymbols: [] };
+  }
+}
+
 export const BASELINE_MARKET_RATES: Record<string, { baseRate: number; defaultChangePct: number }> = {
   'USD': { baseRate: 48.96, defaultChangePct: 0.15 },
   'EUR': { baseRate: 55.12, defaultChangePct: 0.22 },
@@ -94,6 +205,8 @@ export const BASELINE_MARKET_RATES: Record<string, { baseRate: number; defaultCh
 export async function fetchLiveRatesMultiSource(): Promise<{ success: boolean; updatedCount: number; message: string }> {
   // Purge any deprecated rates from IndexedDB
   await cleanupDeprecatedRates();
+  // Sync TEFAS funds with actual user assets (keep only active balance > 0)
+  await syncTefasFundRatesWithAssets();
 
   let updatedCount = 0;
   const todayStr = new Date().toISOString().split('T')[0];

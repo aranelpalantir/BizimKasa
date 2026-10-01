@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import { seedInitialDataIfNeeded, forceResetWithDummyData } from './db/seed';
-import { fetchLiveRatesMultiSource, cleanupDeprecatedRates } from './services/ratesService';
+import { fetchLiveRatesMultiSource, cleanupDeprecatedRates, syncTefasFundRatesWithAssets } from './services/ratesService';
 import { getSettings, updateSettings } from './services/securityService';
 import { Navbar } from './components/common/Navbar';
 import { BottomNav, type TabType } from './components/common/BottomNav';
@@ -70,14 +70,22 @@ export const App: React.FC = () => {
 
     setIsInitializing(false);
 
-    // Clean up deprecated rates (GBP, XAG) and fetch fresh rates
+    // Clean up deprecated rates (GBP, XAG), sync TEFAS funds with active assets, and fetch fresh rates
     await cleanupDeprecatedRates();
+    await syncTefasFundRatesWithAssets();
     fetchLiveRatesMultiSource().catch(console.warn);
   };
 
   useEffect(() => {
     loadSettingsAndInit();
   }, []);
+
+  // Dynamically synchronize TEFAS funds in market rates whenever accounts or transactions change
+  useEffect(() => {
+    if (!isInitializing) {
+      syncTefasFundRatesWithAssets().catch(console.warn);
+    }
+  }, [accounts, transactions, isInitializing]);
 
   // Detect Standalone mode and capture beforeinstallprompt
   useEffect(() => {

@@ -26,7 +26,7 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GroupFilterBar } from '../common/GroupFilterBar';
 import { db } from '../../db/db';
 import { formatTRY, formatNumber, parseUserInputNumber, formatForInput } from '../../services/portfolioService';
-import { lookupTefasFund, searchTefasFunds } from '../../services/ratesService';
+import { lookupTefasFund, searchTefasFunds, syncTefasFundRatesWithAssets } from '../../services/ratesService';
 import type { Account, AssetTransaction, MarketRate, Group } from '../../types/finance';
 
 interface FundsTrackerProps {
@@ -361,6 +361,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     };
 
     await db.transactions.add(newTx);
+    await syncTefasFundRatesWithAssets();
     setIsModalOpen(false);
     setQuantity('');
     setUnitPrice('');
@@ -435,6 +436,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       unitPriceTRY: u,
       note: editNote.trim() || undefined
     });
+    await syncTefasFundRatesWithAssets();
 
     setEditingTx(null);
   };
@@ -450,6 +452,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
         for (const t of txs) {
           await db.transactions.delete(t.id);
         }
+        await syncTefasFundRatesWithAssets();
       }
     });
   };
@@ -461,6 +464,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       message: 'Bu fon alım/satım hareket kaydını silmek istediğinize emin misiniz?',
       onConfirm: async () => {
         await db.transactions.delete(id);
+        await syncTefasFundRatesWithAssets();
       }
     });
   };

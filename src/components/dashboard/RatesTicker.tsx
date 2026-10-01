@@ -35,10 +35,7 @@ export const DEFAULT_RATES_ORDER: string[] = [
   'XAU_CUMHURIYET',
   'XAU_ONS',
   'XU100',
-  'NASDAQ100',
-  'TI2',
-  'MAC',
-  'AFT'
+  'NASDAQ100'
 ];
 
 export function formatRateDisplay(symbol: string, rate: number): string {
@@ -233,54 +230,69 @@ export const RatesTicker: React.FC<RatesTickerProps> = ({ rates }) => {
         </button>
       </div>
 
-      {/* Horizontal Rate Cards */}
-      <div className="flex gap-2 overflow-x-auto pb-2 pt-0.5 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
-        {filteredRates.map((rate) => {
-          return (
-            <button
-              key={rate.symbol}
-              onClick={() => handleOpenModal(rate)}
-              className="flex-shrink-0 flex items-center gap-3 px-3 py-2 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-white/5 hover:border-white/15 transition-all text-left group"
-            >
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-white group-hover:text-amber-400 transition-colors">
-                    {rate.symbol}
-                  </span>
-                  {rate.isManualOverride && (
-                    <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30">
-                      Özel
+      {/* Horizontal Rate Cards or Empty State */}
+      {filteredRates.length === 0 ? (
+        <div className="py-5 px-4 text-center rounded-2xl bg-slate-900/60 border border-white/5 my-1">
+          <p className="text-xs text-slate-300 font-medium">
+            {activeCategory === 'FUND'
+              ? 'Varlıklarınızda kayıtlı veya bakiyesi bulunan TEFAS fonu yok.'
+              : 'Bu kategoride listelenecek piyasa kuru bulunamadı.'}
+          </p>
+          {activeCategory === 'FUND' && (
+            <p className="text-[11px] text-slate-500 mt-1">
+              Varlıklar sekmesinden yeni bir TEFAS fonu aldığınızda otomatik olarak burada listelenecektir.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="flex gap-2 overflow-x-auto pb-2 pt-0.5 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+          {filteredRates.map((rate) => {
+            return (
+              <button
+                key={rate.symbol}
+                onClick={() => handleOpenModal(rate)}
+                className="flex-shrink-0 flex items-center gap-3 px-3 py-2 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-white/5 hover:border-white/15 transition-all text-left group"
+              >
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-white group-hover:text-amber-400 transition-colors">
+                      {rate.symbol}
                     </span>
-                  )}
-                </div>
-                <span className="text-[10px] text-slate-400 max-w-[110px] truncate">{rate.name}</span>
-                <span className="text-[9px] text-slate-500 font-mono mt-0.5">
-                  {rate.dataDate || 'Bugün'} • {rate.source}
-                </span>
-              </div>
-
-              <div className="flex flex-col items-end pl-2 border-l border-white/5">
-                <span className="text-xs font-semibold text-slate-200 font-mono whitespace-nowrap">
-                  {formatRateDisplay(rate.symbol, rate.rateTRY)}
-                </span>
-                <div className={`flex items-center text-[10px] font-medium font-mono ${
-                  rate.changeDailyPct > 0 
-                    ? 'text-emerald-400' 
-                    : rate.changeDailyPct < 0 
-                    ? 'text-rose-400' 
-                    : 'text-slate-400'
-                }`}>
-                  {rate.changeDailyPct > 0 && <TrendingUp className="w-2.5 h-2.5 mr-0.5" />}
-                  {rate.changeDailyPct < 0 && <TrendingDown className="w-2.5 h-2.5 mr-0.5" />}
-                  <span>
-                    {rate.changeDailyPct > 0 ? '+' : rate.changeDailyPct < 0 ? '-' : ''}%{formatNumber(Math.abs(rate.changeDailyPct), 2)}
+                    {rate.isManualOverride && (
+                      <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30">
+                        Özel
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-400 max-w-[110px] truncate">{rate.name}</span>
+                  <span className="text-[9px] text-slate-500 font-mono mt-0.5">
+                    {rate.dataDate || 'Bugün'} • {rate.source}
                   </span>
                 </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+
+                <div className="flex flex-col items-end pl-2 border-l border-white/5">
+                  <span className="text-xs font-semibold text-slate-200 font-mono whitespace-nowrap">
+                    {formatRateDisplay(rate.symbol, rate.rateTRY)}
+                  </span>
+                  <div className={`flex items-center text-[10px] font-medium font-mono ${
+                    rate.changeDailyPct > 0 
+                      ? 'text-emerald-400' 
+                      : rate.changeDailyPct < 0 
+                      ? 'text-rose-400' 
+                      : 'text-slate-400'
+                  }`}>
+                    {rate.changeDailyPct > 0 && <TrendingUp className="w-2.5 h-2.5 mr-0.5" />}
+                    {rate.changeDailyPct < 0 && <TrendingDown className="w-2.5 h-2.5 mr-0.5" />}
+                    <span>
+                      {rate.changeDailyPct > 0 ? '+' : rate.changeDailyPct < 0 ? '-' : ''}%{formatNumber(Math.abs(rate.changeDailyPct), 2)}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* MODAL 1: Kur Düzenleme (Sade & Anlık Değer Odaklı) */}
       <Modal

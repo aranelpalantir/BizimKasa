@@ -13,7 +13,7 @@ import {
 import { Modal } from '../common/Modal';
 import { db } from '../../db/db';
 import { formatTRY, formatNumber, parseUserInputNumber, formatForInput } from '../../services/portfolioService';
-import { lookupTefasFund, searchTefasFunds } from '../../services/ratesService';
+import { lookupTefasFund, searchTefasFunds, syncTefasFundRatesWithAssets } from '../../services/ratesService';
 import type { Group, Account, AssetTransaction, AssetSubType } from '../../types/finance';
 
 interface ImportModalProps {
@@ -523,6 +523,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       }
 
       await db.transactions.bulkAdd(newTransactions);
+      await syncTefasFundRatesWithAssets();
       setImportStatus({
         success: true,
         message: `${parsedRows.length} adet işlem "${selectedGroup.name}" (${resolvedAsset.name}) hesabına başarıyla aktarıldı!`
