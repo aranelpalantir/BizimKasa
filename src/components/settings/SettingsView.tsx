@@ -134,6 +134,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleToggleBiometrics = async () => {
+    if (!settings.pinHash) {
+      showFeedback('error', 'Biyometrik kilit için önce yukarıdan bir PIN kodu belirlemelisiniz.');
+      setIsPinModalOpen(true);
+      return;
+    }
+
     if (!settings.biometricsEnabled) {
       const res = await registerBiometrics();
       if (res.success) {
@@ -356,14 +362,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {/* Biometrics (FaceID / TouchID) */}
-        <div className="flex items-center justify-between py-2 border-b border-white/5">
+        <div className={`flex items-center justify-between py-2 border-b border-white/5 transition-opacity ${!settings.pinHash ? 'opacity-60' : ''}`}>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-slate-800 text-slate-300">
+            <div className={`p-2 rounded-xl transition-colors ${settings.pinHash ? 'bg-slate-800 text-slate-300' : 'bg-slate-800/50 text-slate-500'}`}>
               <Fingerprint className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-sm font-semibold text-white block">Biyometrik Kilit (FaceID / Parmak İzi)</span>
-              <span className="text-xs text-slate-400">Telefonun donanımsal biyometrisi ile anında açılış</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-white block">Biyometrik Kilit (FaceID / Parmak İzi)</span>
+                {!settings.pinHash && (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-semibold border border-amber-500/20">
+                    PIN Gerekli
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-slate-400">
+                {settings.pinHash 
+                  ? 'Telefonun donanımsal biyometrisi ile anında açılış' 
+                  : 'Etkinleştirebilmek için önce yukarıdan bir PIN kodu belirlemelisiniz'}
+              </span>
               {typeof window !== 'undefined' && !window.isSecureContext && (
                 <span className="text-[10px] text-amber-400/90 block mt-0.5">
                   ⚠️ Apple güvenlik kuralı: Yalnızca HTTPS bağlantısında (örn: Cloudflare Pages) çalışır.
@@ -374,10 +391,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             onClick={handleToggleBiometrics}
-            className={`w-12 h-6.5 rounded-full transition-colors relative p-0.5 border ${
+            title={settings.pinHash ? 'Biyometrik Kilidi Aç/Kapat' : 'Önce PIN kodu belirlemelisiniz'}
+            className={`w-12 h-6.5 rounded-full transition-all relative p-0.5 border cursor-pointer ${
               settings.biometricsEnabled
                 ? 'bg-emerald-500 border-emerald-400'
-                : 'bg-slate-800 border-white/10'
+                : settings.pinHash
+                  ? 'bg-slate-800 border-white/10 hover:border-white/20'
+                  : 'bg-slate-800/50 border-white/5'
             }`}
           >
             <div
