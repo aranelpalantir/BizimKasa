@@ -4,15 +4,16 @@ import {
   ChevronLeft, 
   ChevronRight, 
   FolderPlus, 
-  Calendar,
-  CreditCard,
-  TrendingDown,
-  TrendingUp
+  Calendar, 
+  CreditCard, 
+  TrendingDown, 
+  TrendingUp 
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { GroupFilterBar } from '../common/GroupFilterBar';
 import { db } from '../../db/db';
 import { formatTRY, formatNumber } from '../../services/portfolioService';
-import type { Group, Account, CashFlowEntry } from '../../types/finance';
+import type { Group, Account, CashFlowEntry, AssetSubType } from '../../types/finance';
 
 interface MonthlyMatrixViewProps {
   groups: Group[];
@@ -26,15 +27,19 @@ const MONTH_NAMES = [
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ];
 
+const AVAILABLE_YEARS = [2025, 2026, 2027];
+const ALL_12_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
 export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   groups,
   accounts,
   entries,
   hideValues,
 }) => {
-  const currentYear = 2026;
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1); // 1-12
+  const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [viewMode, setViewMode] = useState<'matrix' | 'monthly'>('matrix');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
 
   // Modals state
   const [editingCell, setEditingCell] = useState<{ account: Account; month: number; currentVal: number } | null>(null);
@@ -48,13 +53,23 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   const [newAccGroupId, setNewAccGroupId] = useState('');
   const [newAccName, setNewAccName] = useState('');
   const [newAccType, setNewAccType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
-  const [newAccSubType, setNewAccSubType] = useState<'CREDIT_CARD' | 'OTHER' | 'CASH'>('CREDIT_CARD');
+  const [newAccSubType, setNewAccSubType] = useState<AssetSubType>('CREDIT_CARD');
   const [newAccBank, setNewAccBank] = useState('');
 
-  // Map for lightning fast lookup: key = `${accountId}_${month}`
+  // When type changes in modal, auto-switch to a sensible subType
+  const handleTypeChange = (type: 'EXPENSE' | 'INCOME') => {
+    setNewAccType(type);
+    if (type === 'EXPENSE') {
+      setNewAccSubType('CREDIT_CARD');
+    } else {
+      setNewAccSubType('INCOME_SALARY');
+    }
+  };
+
+  // Map for lightning fast lookup: key = `${accountId}_${year}_${month}`
   const entryMap = new Map<string, number>();
   for (const e of entries) {
-    if (e.year === currentYear) {
+    if (e.year === selectedYear) {
       entryMap.set(`${e.accountId}_${e.month}`, e.amount);
     }
   }
@@ -73,9 +88,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     if (!editingCell) return;
     const val = parseFloat(cellInputValue.replace(/\./g, '').replace(',', '.')) || 0;
     
-    // Find existing
     const existing = entries.find(
-      e => e.accountId === editingCell.account.id && e.year === currentYear && e.month === editingCell.month
+      e => e.accountId === editingCell.account.id && e.year === selectedYear && e.month === editingCell.month
     );
 
     if (existing) {
@@ -88,11 +102,11 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         });
       }
     } else if (val > 0) {
-      const id = `cf_${editingCell.account.id}_${currentYear}_${editingCell.month}`;
+      const id = `cf_${editingCell.account.id}_${selectedYear}_${editingCell.month}`;
       await db.cashFlowEntries.put({
         id,
         accountId: editingCell.account.id,
-        year: currentYear,
+        year: selectedYear,
         month: editingCell.month,
         amount: val,
         updatedAt: new Date().toISOString()
@@ -135,9 +149,6 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     setIsAccountModalOpen(false);
   };
 
-  // Months to display in matrix view (default focus on Feb-May or all months)
-  const displayMonths = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // 1-12
-
   // Helper calculations for a specific group & month
   const calcGroupTotals = (group: Group, month: number) => {
     const groupAccounts = accounts.filter(a => a.groupId === group.id);
@@ -161,7 +172,11 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   const calcConsolidated = (month: number) => {
     let grandExpense = 0;
     let grandIncome = 0;
-    for (const group of groups) {
+    const targetGroups = selectedGroupId === 'ALL'
+      ? groups
+      : groups.filter(g => g.id === selectedGroupId);
+
+    for (const group of targetGroups) {
       const { totalExpense, totalIncome } = calcGroupTotals(group, month);
       grandExpense += totalExpense;
       grandIncome += totalIncome;
@@ -173,20 +188,39 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     };
   };
 
+  const filteredGroups = selectedGroupId === 'ALL'
+    ? groups
+    : groups.filter(g => g.id === selectedGroupId);
+
   return (
     <div className="space-y-4">
       {/* Top Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5">
-        <div>
-          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-            <span>Aylık Bütçe & Nakit Akışı Matrisi</span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              {currentYear}
-            </span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Kredi kartı ekstreleri, sabit giderler ve kişi bazlı net kalan tablosu
-          </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+              <span>Aylık Bütçe & Nakit Akışı Matrisi</span>
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              12 aylık kredi kartı ekstreleri, sabit giderler ve kişi bazlı net kalan tablosu
+            </p>
+          </div>
+
+          {/* Year Selector */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-800 border border-white/10">
+            <Calendar className="w-3.5 h-3.5 text-amber-400 ml-1.5" />
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="bg-transparent text-white font-bold text-xs focus:outline-none pr-2 cursor-pointer"
+            >
+              {AVAILABLE_YEARS.map((y) => (
+                <option key={y} value={y} className="bg-slate-900 text-white">
+                  {y} Yılı
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -195,22 +229,21 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             <button
               onClick={() => setViewMode('matrix')}
               className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
-                viewMode === 'matrix' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+                viewMode === 'matrix' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
               }`}
             >
-              Yıllık Matris
+              Yıllık Matris (12 Ay)
             </button>
             <button
               onClick={() => setViewMode('monthly')}
               className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
-                viewMode === 'monthly' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+                viewMode === 'monthly' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
               }`}
             >
               Aylık Görünüm
             </button>
           </div>
 
-          {/* Add Group & Add Account Buttons */}
           <button
             onClick={() => setIsGroupModalOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-white/10 transition-colors"
@@ -232,24 +265,32 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         </div>
       </div>
 
-      {/* MATRIX VIEW (Google Sheet Replica) */}
+      {/* Group Filter Bar */}
+      <GroupFilterBar
+        groups={groups}
+        selectedGroupId={selectedGroupId}
+        onSelectGroup={setSelectedGroupId}
+        title="Grup Filtresi"
+      />
+
+      {/* MATRIX VIEW (Full 12 Months) */}
       {viewMode === 'matrix' && (
         <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-950/80 border-b border-white/10 text-slate-400 font-semibold sticky top-0 z-20">
-                <th className="py-3 px-4 min-w-[200px] sticky left-0 z-30 bg-slate-950/95 border-r border-white/10">
-                  Kalem / Hesap
+                <th className="py-3 px-4 min-w-[190px] sticky left-0 z-30 bg-slate-950/95 border-r border-white/10">
+                  Kalem / Hesap ({selectedYear})
                 </th>
-                {displayMonths.map((m) => (
-                  <th key={m} className="py-3 px-3 min-w-[110px] text-right font-medium">
+                {ALL_12_MONTHS.map((m) => (
+                  <th key={m} className="py-3 px-2.5 min-w-[95px] text-right font-medium">
                     {MONTH_NAMES[m - 1]}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {groups.map((group) => {
+              {filteredGroups.map((group) => {
                 const groupAccounts = accounts.filter(a => a.groupId === group.id && (a.type === 'EXPENSE' || a.type === 'INCOME'));
                 const expenseAccounts = groupAccounts.filter(a => a.type === 'EXPENSE');
                 const incomeAccounts = groupAccounts.filter(a => a.type === 'INCOME');
@@ -258,7 +299,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                   <React.Fragment key={group.id}>
                     {/* Group Header Row */}
                     <tr className="bg-slate-900/90 font-bold border-t-2 border-white/10">
-                      <td colSpan={displayMonths.length + 1} className="py-2.5 px-4 text-sm sticky left-0 z-10 flex items-center gap-2" style={{ color: group.color }}>
+                      <td colSpan={ALL_12_MONTHS.length + 1} className="py-2.5 px-4 text-sm sticky left-0 z-10 flex items-center gap-2" style={{ color: group.color }}>
                         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: group.color }} />
                         <span>{group.name} Bütçesi</span>
                       </td>
@@ -273,13 +314,13 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                             <CreditCard className="w-3 h-3 text-slate-500 flex-shrink-0" />
                           )}
                         </td>
-                        {displayMonths.map((m) => {
+                        {ALL_12_MONTHS.map((m) => {
                           const val = getAmount(acc.id, m);
                           return (
                             <td
                               key={m}
                               onClick={() => handleCellClick(acc, m)}
-                              className="py-2 px-3 text-right font-mono cursor-pointer hover:bg-amber-400/10 transition-colors text-slate-300"
+                              className="py-2 px-2.5 text-right font-mono cursor-pointer hover:bg-amber-400/10 transition-colors text-slate-300"
                             >
                               {val > 0 ? formatNumber(val, 0, hideValues) : '-'}
                             </td>
@@ -288,15 +329,15 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                       </tr>
                     ))}
 
-                    {/* Group Expense Subtotal (Red Row) */}
+                    {/* Group Expense Subtotal */}
                     <tr className="bg-rose-500/10 font-bold border-y border-rose-500/20 text-rose-400">
                       <td className="py-2 px-4 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
                         {group.name} Gider
                       </td>
-                      {displayMonths.map((m) => {
+                      {ALL_12_MONTHS.map((m) => {
                         const { totalExpense } = calcGroupTotals(group, m);
                         return (
-                          <td key={m} className="py-2 px-3 text-right font-mono">
+                          <td key={m} className="py-2 px-2.5 text-right font-mono">
                             {formatNumber(totalExpense, 0, hideValues)}
                           </td>
                         );
@@ -309,13 +350,13 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                         <td className="py-2 px-4 text-emerald-400 font-medium sticky left-0 z-10 bg-slate-900/95 border-r border-white/10">
                           {acc.name}
                         </td>
-                        {displayMonths.map((m) => {
+                        {ALL_12_MONTHS.map((m) => {
                           const val = getAmount(acc.id, m);
                           return (
                             <td
                               key={m}
                               onClick={() => handleCellClick(acc, m)}
-                              className="py-2 px-3 text-right font-mono cursor-pointer hover:bg-emerald-400/10 transition-colors text-emerald-300"
+                              className="py-2 px-2.5 text-right font-mono cursor-pointer hover:bg-emerald-400/10 transition-colors text-emerald-300"
                             >
                               {val > 0 ? formatNumber(val, 0, hideValues) : '-'}
                             </td>
@@ -324,15 +365,15 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                       </tr>
                     ))}
 
-                    {/* Group Remaining Subtotal (Blue Row) */}
+                    {/* Group Remaining Subtotal */}
                     <tr className="bg-blue-500/10 font-bold border-b-2 border-white/15 text-blue-400">
                       <td className="py-2 px-4 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
                         {group.name} Kalan
                       </td>
-                      {displayMonths.map((m) => {
+                      {ALL_12_MONTHS.map((m) => {
                         const { remaining } = calcGroupTotals(group, m);
                         return (
-                          <td key={m} className={`py-2 px-3 text-right font-mono ${remaining < 0 ? 'text-rose-400' : 'text-blue-400'}`}>
+                          <td key={m} className={`py-2 px-2.5 text-right font-mono ${remaining < 0 ? 'text-rose-400' : 'text-blue-400'}`}>
                             {formatNumber(remaining, 0, hideValues)}
                           </td>
                         );
@@ -342,17 +383,17 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                 );
               })}
 
-              {/* CONSOLIDATED GRAND TOTALS (Image 1 Bottom Rows) */}
-              <tr className="h-4 bg-slate-950/60"><td colSpan={displayMonths.length + 1}></td></tr>
+              {/* CONSOLIDATED GRAND TOTALS */}
+              <tr className="h-4 bg-slate-950/60"><td colSpan={ALL_12_MONTHS.length + 1}></td></tr>
               
               <tr className="bg-rose-950/40 text-rose-300 font-extrabold text-sm border-y border-rose-500/30">
                 <td className="py-3 px-4 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
-                  Genel Gider
+                  {selectedGroupId === 'ALL' ? 'Genel Gider' : 'Filtrelenen Gider'}
                 </td>
-                {displayMonths.map((m) => {
+                {ALL_12_MONTHS.map((m) => {
                   const { grandExpense } = calcConsolidated(m);
                   return (
-                    <td key={m} className="py-3 px-3 text-right font-mono">
+                    <td key={m} className="py-3 px-2.5 text-right font-mono">
                       {formatNumber(grandExpense, 0, hideValues)}
                     </td>
                   );
@@ -361,12 +402,12 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
               <tr className="bg-emerald-950/40 text-emerald-300 font-extrabold text-sm border-b border-emerald-500/30">
                 <td className="py-3 px-4 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
-                  Genel Gelir
+                  {selectedGroupId === 'ALL' ? 'Genel Gelir' : 'Filtrelenen Gelir'}
                 </td>
-                {displayMonths.map((m) => {
+                {ALL_12_MONTHS.map((m) => {
                   const { grandIncome } = calcConsolidated(m);
                   return (
-                    <td key={m} className="py-3 px-3 text-right font-mono">
+                    <td key={m} className="py-3 px-2.5 text-right font-mono">
                       {formatNumber(grandIncome, 0, hideValues)}
                     </td>
                   );
@@ -374,13 +415,13 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
               </tr>
 
               <tr className="bg-blue-950/60 text-blue-300 font-extrabold text-base border-b-2 border-blue-400">
-                <td className="py-3.5 px-4 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10 flex items-center gap-1.5">
-                  <span>Genel Kalan</span>
+                <td className="py-3.5 px-4 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
+                  {selectedGroupId === 'ALL' ? 'Genel Kalan' : 'Filtrelenen Kalan'}
                 </td>
-                {displayMonths.map((m) => {
+                {ALL_12_MONTHS.map((m) => {
                   const { grandRemaining } = calcConsolidated(m);
                   return (
-                    <td key={m} className={`py-3.5 px-3 text-right font-mono ${grandRemaining < 0 ? 'text-rose-400' : 'text-blue-300'}`}>
+                    <td key={m} className={`py-3.5 px-2.5 text-right font-mono ${grandRemaining < 0 ? 'text-rose-400' : 'text-blue-300'}`}>
                       {formatNumber(grandRemaining, 0, hideValues)}
                     </td>
                   );
@@ -391,10 +432,9 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         </div>
       )}
 
-      {/* SINGLE MONTH VIEW (Mobile Optimized Cards) */}
+      {/* SINGLE MONTH VIEW */}
       {viewMode === 'monthly' && (
         <div className="space-y-4">
-          {/* Month Selector Bar */}
           <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-900 border border-white/10">
             <button
               onClick={() => setSelectedMonth(m => Math.max(1, m - 1))}
@@ -405,7 +445,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             </button>
             <div className="flex items-center gap-2 font-bold text-base text-white">
               <Calendar className="w-4 h-4 text-amber-400" />
-              <span>{MONTH_NAMES[selectedMonth - 1]} {currentYear}</span>
+              <span>{MONTH_NAMES[selectedMonth - 1]} {selectedYear}</span>
             </div>
             <button
               onClick={() => setSelectedMonth(m => Math.min(12, m + 1))}
@@ -416,25 +456,25 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             </button>
           </div>
 
-          {/* Consolidated Month Summary Card */}
+          {/* Consolidated Month Summary */}
           {(() => {
             const { grandExpense, grandIncome, grandRemaining } = calcConsolidated(selectedMonth);
             return (
               <div className="grid grid-cols-3 gap-2.5 p-4 rounded-2xl bg-slate-900/90 border border-white/10 text-center">
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-semibold text-rose-400 uppercase">Genel Gider</span>
+                  <span className="text-[11px] font-semibold text-rose-400 uppercase">Toplam Gider</span>
                   <span className="text-base sm:text-lg font-bold text-white mt-1 font-mono">
                     {formatTRY(grandExpense, hideValues)}
                   </span>
                 </div>
                 <div className="flex flex-col border-x border-white/10 px-1">
-                  <span className="text-[11px] font-semibold text-emerald-400 uppercase">Genel Gelir</span>
+                  <span className="text-[11px] font-semibold text-emerald-400 uppercase">Toplam Gelir</span>
                   <span className="text-base sm:text-lg font-bold text-white mt-1 font-mono">
                     {formatTRY(grandIncome, hideValues)}
                   </span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-semibold text-blue-400 uppercase">Genel Kalan</span>
+                  <span className="text-[11px] font-semibold text-blue-400 uppercase">Kalan Bütçe</span>
                   <span className={`text-base sm:text-lg font-bold mt-1 font-mono ${grandRemaining < 0 ? 'text-rose-400' : 'text-blue-400'}`}>
                     {formatTRY(grandRemaining, hideValues)}
                   </span>
@@ -445,7 +485,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
           {/* Group Breakdown Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {groups.map((group) => {
+            {filteredGroups.map((group) => {
               const { remaining } = calcGroupTotals(group, selectedMonth);
               const groupAccounts = accounts.filter(a => a.groupId === group.id && (a.type === 'EXPENSE' || a.type === 'INCOME'));
 
@@ -499,7 +539,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
       <Modal
         isOpen={!!editingCell}
         onClose={() => setEditingCell(null)}
-        title={editingCell ? `${editingCell.account.name} — ${MONTH_NAMES[editingCell.month - 1]} ${currentYear}` : ''}
+        title={editingCell ? `${editingCell.account.name} — ${MONTH_NAMES[editingCell.month - 1]} ${selectedYear}` : ''}
       >
         {editingCell && (
           <div className="space-y-4">
@@ -550,7 +590,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
               type="text"
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
-              placeholder="Örn: Mert, Aylin, Çocuk, Ortak Ev..."
+              placeholder="Örn: Mert, Aylin, Çocuk, Ortak Kasa..."
               className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none focus:border-amber-400"
             />
           </div>
@@ -587,7 +627,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         </div>
       </Modal>
 
-      {/* Add New Account / Category Modal */}
+      {/* Add New Account Modal with Dynamic SubTypes */}
       <Modal
         isOpen={isAccountModalOpen}
         onClose={() => setIsAccountModalOpen(false)}
@@ -609,10 +649,10 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Tür</label>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Ana Tür</label>
               <select
                 value={newAccType}
-                onChange={(e) => setNewAccType(e.target.value as any)}
+                onChange={(e) => handleTypeChange(e.target.value as any)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none"
               >
                 <option value="EXPENSE">Gider / Kart</option>
@@ -621,15 +661,27 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Alt Tür</label>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Alt Kategori</label>
               <select
                 value={newAccSubType}
                 onChange={(e) => setNewAccSubType(e.target.value as any)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none"
               >
-                <option value="CREDIT_CARD">Kredi Kartı</option>
-                <option value="CASH">Nakit / Maaş</option>
-                <option value="OTHER">Diğer Sabit Gider</option>
+                {newAccType === 'EXPENSE' ? (
+                  <>
+                    <option value="CREDIT_CARD">💳 Kredi Kartı</option>
+                    <option value="EXPENSE_FIXED">🏠 Sabit Gider / Aidat / Kira</option>
+                    <option value="EXPENSE_BILLS">🧾 Faturalar</option>
+                    <option value="EXPENSE_OTHER">🛒 Diğer Harcamalar</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="INCOME_SALARY">💼 Maaş Geliri</option>
+                    <option value="INCOME_RENT">🏢 Kira Geliri</option>
+                    <option value="INCOME_BONUS">⭐ Prim / İkramiye</option>
+                    <option value="INCOME_OTHER">➕ Ek Gelir</option>
+                  </>
+                )}
               </select>
             </div>
           </div>
@@ -640,7 +692,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
               type="text"
               value={newAccName}
               onChange={(e) => setNewAccName(e.target.value)}
-              placeholder="Örn: Garanti Kart, Aidat, Kira..."
+              placeholder="Örn: Garanti Kart, Aidat, Maaş..."
               className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none focus:border-amber-400"
             />
           </div>

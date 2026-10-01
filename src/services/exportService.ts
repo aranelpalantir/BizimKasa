@@ -1,5 +1,5 @@
 import { db } from '../db/db';
-import { seedInitialDataIfNeeded } from '../db/seed';
+import { forceResetWithDummyData } from '../db/seed';
 
 export interface BizimKasaBackup {
   version: number;
@@ -94,22 +94,5 @@ export async function importDatabaseFromJSON(file: File): Promise<{ success: boo
 }
 
 export async function resetToSampleData(): Promise<void> {
-  await db.transaction('rw', [
-    db.groups,
-    db.accounts,
-    db.cashFlowEntries,
-    db.transactions,
-    db.marketRates,
-    db.investmentPlans,
-    db.settings
-  ], async () => {
-    await db.groups.clear();
-    await db.accounts.clear();
-    await db.cashFlowEntries.clear();
-    await db.transactions.clear();
-    await db.marketRates.clear();
-    await db.investmentPlans.clear();
-    await db.settings.clear();
-  });
-  await seedInitialDataIfNeeded();
+  await forceResetWithDummyData();
 }

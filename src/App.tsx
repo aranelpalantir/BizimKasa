@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
-import { seedInitialDataIfNeeded } from './db/seed';
-import { fetchLiveRates } from './services/ratesService';
+import { seedInitialDataIfNeeded, forceResetWithDummyData } from './db/seed';
+import { fetchLiveRatesMultiSource } from './services/ratesService';
 import { getSettings, updateSettings } from './services/securityService';
 import { Navbar } from './components/common/Navbar';
 import { BottomNav, type TabType } from './components/common/BottomNav';
@@ -40,7 +40,15 @@ export const App: React.FC = () => {
 
   // Load Settings and Seed
   const loadSettingsAndInit = async () => {
-    await seedInitialDataIfNeeded();
+    // Check if dummy data v2 is seeded
+    const dummyVerRecord = await db.settings.get('dummyDataVersion');
+    if (!dummyVerRecord || dummyVerRecord.value < 2) {
+      await forceResetWithDummyData();
+      await db.settings.put({ key: 'dummyDataVersion', value: 2 });
+    } else {
+      await seedInitialDataIfNeeded();
+    }
+
     const loadedSettings = await getSettings();
     setSettings(loadedSettings);
 
@@ -52,7 +60,7 @@ export const App: React.FC = () => {
     setIsInitializing(false);
 
     // Background fetch fresh rates
-    fetchLiveRates().catch(console.warn);
+    fetchLiveRatesMultiSource().catch(console.warn);
   };
 
   useEffect(() => {
@@ -93,7 +101,7 @@ export const App: React.FC = () => {
   const handleRefreshRates = async () => {
     setIsRefreshingRates(true);
     try {
-      await fetchLiveRates();
+      await fetchLiveRatesMultiSource();
     } finally {
       setTimeout(() => setIsRefreshingRates(false), 600);
     }
@@ -137,6 +145,7 @@ export const App: React.FC = () => {
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-4 sm:py-6">
         {activeTab === 'dashboard' && (
           <DashboardView
+            groups={groups}
             accounts={accounts}
             transactions={transactions}
             rates={marketRates}
@@ -157,6 +166,7 @@ export const App: React.FC = () => {
 
         {activeTab === 'assets' && (
           <AssetDashboard
+            groups={groups}
             accounts={accounts}
             transactions={transactions}
             rates={marketRates}

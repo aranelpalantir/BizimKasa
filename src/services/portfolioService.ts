@@ -1,10 +1,12 @@
-import type { Account, AssetTransaction, MarketRate } from '../types/finance';
+import type { Account, AssetTransaction, MarketRate, Group } from '../types/finance';
 
 export interface AssetPosition {
   account: Account;
   symbol: string;
   name: string;
   subType: string;
+  groupId: string;
+  groupName?: string;
   totalQuantity: number;
   totalCostTRY: number;
   avgCostTRY: number;
@@ -14,6 +16,15 @@ export interface AssetPosition {
   profitLossPct: number;
   portfolioWeightPct: number;
   dailyChangePct: number;
+}
+
+export interface GroupPortfolioBreakdown {
+  group: Group;
+  totalCostTRY: number;
+  totalValueTRY: number;
+  profitLossTRY: number;
+  profitLossPct: number;
+  positionsCount: number;
 }
 
 export interface PortfolioSummary {
@@ -29,19 +40,32 @@ export interface PortfolioSummary {
   currencyPositions: AssetPosition[];
   fundPositions: AssetPosition[];
   otherPositions: AssetPosition[];
+  groupBreakdowns: GroupPortfolioBreakdown[];
 }
 
 export function calculatePortfolioSummary(
   accounts: Account[],
   transactions: AssetTransaction[],
-  rates: MarketRate[]
+  rates: MarketRate[],
+  groups: Group[] = [],
+  filterGroupId?: string
 ): PortfolioSummary {
   const rateMap = new Map<string, MarketRate>();
   for (const r of rates) {
     rateMap.set(r.symbol, r);
   }
 
-  const assetAccounts = accounts.filter(a => a.type === 'ASSET');
+  const groupMap = new Map<string, Group>();
+  for (const g of groups) {
+    groupMap.set(g.id, g);
+  }
+
+  // Filter accounts if a specific group is selected
+  const targetAccounts = (filterGroupId && filterGroupId !== 'ALL')
+    ? accounts.filter(a => a.groupId === filterGroupId)
+    : accounts;
+
+  const assetAccounts = targetAccounts.filter(a => a.type === 'ASSET');
   const positions: AssetPosition[] = [];
 
   let totalCostTRY = 0;
@@ -72,7 +96,7 @@ export function calculatePortfolioSummary(
     const avgCostTRY = boughtQty > 0 ? boughtCost / boughtQty : 0;
     const currentCostTRY = netQuantity * avgCostTRY;
 
-    // Determine current rate
+    // Rate resolution
     const symbol = account.symbol || '';
     const rateRecord = rateMap.get(symbol);
     const currentRateTRY = rateRecord?.rateTRY || avgCostTRY || 1;
@@ -90,6 +114,8 @@ export function calculatePortfolioSummary(
       symbol,
       name: account.name,
       subType: account.subType,
+      groupId: account.groupId,
+      groupName: groupMap.get(account.groupId)?.name || 'Diğer',
       totalQuantity: netQuantity,
       totalCostTRY: currentCostTRY,
       avgCostTRY,
@@ -97,7 +123,7 @@ export function calculatePortfolioSummary(
       currentValueTRY,
       profitLossTRY,
       profitLossPct,
-      portfolioWeightPct: 0, // Will be computed after totalValueTRY
+      portfolioWeightPct: 0,
       dailyChangePct
     });
   }
@@ -113,11 +139,41 @@ export function calculatePortfolioSummary(
   // Real returns in foreign currencies and gold
   const usdRate = rateMap.get('USD')?.rateTRY || 49.03;
   const eurRate = rateMap.get('EUR')?.rateTRY || 55.24;
-  const goldRate = rateMap.get('XAU_GR')?.rateTRY || 6561.65;
+  const goldRate = rateMap.get('XAU_GR_BANK')?.rateTRY || rateMap.get('XAU_GR_PHYSICAL')?.rateTRY || 6561.65;
 
   const profitLossUSD = usdRate > 0 ? profitLossTRY / usdRate : 0;
   const profitLossEUR = eurRate > 0 ? profitLossTRY / eurRate : 0;
   const profitLossGoldGram = goldRate > 0 ? profitLossTRY / goldRate : 0;
+
+  // Group breakdowns
+  const groupBreakdowns: GroupPortfolioBreakdown[] = groups.map((grp) => {
+    const grpPositions = positions.filter(p => p.groupId === grp.id);
+    let gCost = 0;
+    let gVal = 0;
+    for (const p of grpPositions) {
+      gCost += p.totalCostTRY;
+      gVal += p.currentValueTRY;
+    }
+    const gPL = gVal - gCost;
+    const gPLPct = gCost > 0 ? (gPL / gCost) * 100 : 0;
+    return {
+      group: grp,
+      totalCostTRY: gCost,
+      totalValueTRY: gVal,
+      profitLossTRY: gPL,
+      profitLossPct: gPLPct,
+      positionsCount: grpPositions.length
+    };
+  });
+
+  const isGoldType = (st: string) => 
+    st === 'GOLD_GRAM_PHYSICAL' || 
+    st === 'GOLD_GRAM_BANK' || 
+    st === 'GOLD_CEYREK' || 
+    st === 'GOLD_YARIM' || 
+    st === 'GOLD_TAM' ||
+    st === 'GOLD_GRAM' || 
+    st === 'GOLD_PIECE';
 
   return {
     totalCostTRY,
@@ -128,10 +184,11 @@ export function calculatePortfolioSummary(
     profitLossEUR,
     profitLossGoldGram,
     positions,
-    goldPositions: positions.filter(p => p.subType === 'GOLD_GRAM' || p.subType === 'GOLD_PIECE'),
+    goldPositions: positions.filter(p => isGoldType(p.subType)),
     currencyPositions: positions.filter(p => p.subType === 'CURRENCY'),
     fundPositions: positions.filter(p => p.subType === 'FUND' || p.subType === 'STOCK'),
-    otherPositions: positions.filter(p => p.subType !== 'GOLD_GRAM' && p.subType !== 'GOLD_PIECE' && p.subType !== 'CURRENCY' && p.subType !== 'FUND' && p.subType !== 'STOCK')
+    otherPositions: positions.filter(p => !isGoldType(p.subType) && p.subType !== 'CURRENCY' && p.subType !== 'FUND' && p.subType !== 'STOCK'),
+    groupBreakdowns
   };
 }
 

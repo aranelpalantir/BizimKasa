@@ -1,81 +1,102 @@
 export type AccountType = 'INCOME' | 'EXPENSE' | 'ASSET';
 
 export type AssetSubType = 
-  | 'GOLD_GRAM'      // Gram Altın (24k, banka veya fiziki)
-  | 'GOLD_PIECE'     // Çeyrek, Yarım, Tam Altın
-  | 'CURRENCY'       // USD, EUR, GBP vb.
-  | 'FUND'           // TEFAS Yatırım Fonu (TTE, GSP, DVT vb.)
-  | 'STOCK'          // BIST veya Yabancı Hisse
-  | 'CASH'           // Nakit TL / Vadesiz Hesap
-  | 'CREDIT_CARD'    // Kredi kartı ekstreleri
+  | 'GOLD_GRAM_PHYSICAL' // Fiziki Gram Altın
+  | 'GOLD_GRAM_BANK'     // Banka Gram Altın
+  | 'GOLD_CEYREK'        // Çeyrek Altın (Fiziki)
+  | 'GOLD_YARIM'         // Yarım Altın
+  | 'GOLD_TAM'           // Tam / Cumhuriyet Altını
+  | 'CURRENCY'           // Döviz (USD, EUR, GBP)
+  | 'FUND'               // TEFAS Yatırım Fonu
+  | 'STOCK'              // Hisse Senedi (BIST / Yabancı)
+  | 'CASH'               // Nakit / Vadesiz / Mevduat
+  | 'CREDIT_CARD'        // Kredi Kartı
+  | 'EXPENSE_FIXED'      // Sabit Gider / Aidat / Kira
+  | 'EXPENSE_BILLS'      // Fatura
+  | 'EXPENSE_OTHER'      // Diğer Harcama
+  | 'INCOME_SALARY'      // Maaş
+  | 'INCOME_RENT'        // Kira Geliri
+  | 'INCOME_BONUS'       // Prim / İkramiye
+  | 'INCOME_OTHER'       // Ek Gelir
   | 'OTHER';
 
 export interface Group {
   id: string;
-  name: string;        // "Mert", "Aylin", "Çocuk", "Ortak Ev"
-  color: string;       // HEX code (#3b82f6, #8b5cf6, etc.)
+  name: string;        // "Mert", "Aylin", "Çocuk", "Ortak"
+  color: string;       // HEX code
   order: number;
   createdAt: string;
 }
 
 export interface Account {
   id: string;
-  groupId: string;     // Foreign key to Group
-  name: string;        // "Aylin Vakıf", "Mert İş", "Gram Altın", "TTE Fonu"
+  groupId: string;     // Hangi gruba ait olduğu (Mert, Aylin, Çocuk, Ortak)
+  name: string;        // "Ziraat Banka Gram Altın", "Kasa Fiziki Gram", "Maaş", vb.
   type: AccountType;
   subType: AssetSubType;
-  symbol?: string;     // E.g. 'USD', 'EUR', 'XAU_GR', 'XAU_CEYREK', 'TTE', 'GSP', 'DVT'
-  bankName?: string;   // E.g. 'Vakıfbank', 'Garanti', 'İş Bankası', 'Fiziki Kasa'
+  symbol?: string;     // 'USD', 'EUR', 'XAU_GR_PHYSICAL', 'XAU_GR_BANK', 'XAU_CEYREK', 'TI2', 'MAC', vb.
+  bankName?: string;   // 'Garanti', 'Ziraat', 'Fiziki Kasa', vb.
   currency: 'TRY' | 'USD' | 'EUR';
   order: number;
   initialBalance?: number;
-  targetAllocationPct?: number; // e.g. %25
+  targetAllocationPct?: number;
   createdAt: string;
 }
 
-// Aylık Gelir ve Gider / Kredi Kartı Ekstre Matrisi (Google Sheet Görsel 1)
 export interface CashFlowEntry {
   id: string;
   accountId: string;   // Foreign key to Account
-  year: number;        // e.g. 2026
+  year: number;        // e.g. 2025, 2026
   month: number;       // 1 - 12 (Ocak - Aralık)
-  amount: number;      // Harcama / Gelir tutarı (TL)
+  amount: number;      // Tutar (TL)
   note?: string;
-  isProjected?: boolean; // Önümüzdeki ay tahmini / taksiti
+  isProjected?: boolean;
   updatedAt: string;
 }
 
-// Alış ve Satış Varlık Hareketleri (Google Sheet Görsel 2, 3, 4, 5)
 export interface AssetTransaction {
   id: string;
-  accountId: string;   // Foreign key to Account (e.g. Gram Altın, Euro, TTE)
+  accountId: string;   // Foreign key to Account
+  groupId?: string;    // İsteğe bağlı işlem bazlı grup eşleme
   date: string;        // 'YYYY-MM-DD'
   year: number;
   month: number;       // 1 - 12
   type: 'BUY' | 'SELL';
-  quantity: number;    // Adet / Gram / Lot / Döviz miktarı (bozdurulduğunda pozitif sayı, SELL türünde)
-  totalAmountTRY: number; // Toplam TL maliyeti veya bozdurma karşılığı
-  unitPriceTRY: number;   // Birim TL maliyet (totalAmountTRY / quantity)
+  quantity: number;    // Alışlarda pozitif, satışlarda bozdurulan miktar
+  totalAmountTRY: number; // Toplam TL maliyeti veya satım geliri
+  unitPriceTRY: number;   // Birim TL fiyatı
   note?: string;
   createdAt: string;
 }
 
-// Piyasa Kurları & Fiyat Göstergeleri
+export type MarketRateCategory = 'CURRENCY' | 'GOLD' | 'COMMODITY' | 'STOCK_INDEX' | 'FUND';
+
 export interface MarketRate {
-  symbol: string;         // 'USD', 'EUR', 'XAU_GR', 'XAU_CEYREK', 'XAU_ONS', 'XAG', 'XU100', 'NASDAQ100', 'TTE', etc.
-  name: string;           // "Gram Altın", "Amerikan Doları", "TTE - İş Portföy BIST Teknoloji"
-  category: 'CURRENCY' | 'GOLD' | 'COMMODITY' | 'INDEX' | 'FUND';
-  rateTRY: number;        // Güncel alış/satış TL fiyatı
+  symbol: string;         // 'USD', 'EUR', 'XAU_GR_PHYSICAL', 'XAU_GR_BANK', 'XAU_CEYREK', 'XU100', 'MAC', vb.
+  name: string;           // "Gram Altın (Fiziki)", "Gram Altın (Banka)", vb.
+  category: MarketRateCategory;
+  rateTRY: number;        // Güncel TL fiyatı
   changeDailyPct: number; // Günlük % değişim
-  updatedAt: string;
+  source: string;         // "TCMB / Piyasa", "TEFAS", "Kapalıçarşı", "Manuel"
+  dataDate: string;       // Verinin ait olduğu gün (YYYY-MM-DD)
+  updatedAt: string;      // Son güncelleme anı (ISO)
   isManualOverride: boolean;
   manualRate?: number;
 }
 
-// Aylık Yatırım Bütçesi ve Hedef Dağılımı
+// Son 10 günün (veya daha fazlasının) kur tarihçesi
+export interface MarketRateHistoryRecord {
+  id: string;             // `${symbol}_${date}`
+  symbol: string;
+  date: string;           // YYYY-MM-DD
+  rateTRY: number;
+  source: string;
+  isManual: boolean;
+}
+
 export interface InvestmentAllocation {
-  accountId: string;      // Hedef varlık hesabı
-  targetAmountTRY: number;// Hedeflenen yatırım tutarı
+  accountId: string;
+  targetAmountTRY: number;
   actualAmountTRY?: number;
   completed?: boolean;
 }
@@ -84,19 +105,20 @@ export interface MonthlyInvestmentPlan {
   id: string;
   year: number;
   month: number;
+  groupId?: string;       // Grup bazlı veya konsolide
   totalPlannedTRY: number;
   allocations: InvestmentAllocation[];
   notes?: string;
   updatedAt: string;
 }
 
-// Güvenlik ve Uygulama Ayarları
 export interface AppSettings {
-  pinHash?: string;           // SHA-256 hash of PIN
-  biometricsEnabled: boolean; // FaceID / TouchID / Windows Hello
-  autoLockMinutes: number;    // 0 = anında, 1, 5, 15, 0 = kapalı
+  pinHash?: string;
+  biometricsEnabled: boolean;
+  autoLockMinutes: number;
   lastActiveTimestamp: number;
   isLocked: boolean;
   defaultCurrency: 'TRY' | 'USD' | 'EUR';
-  hideValuesOnScreen: boolean;// Gizlilik modu (rakamları yıldızlama)
+  hideValuesOnScreen: boolean;
+  selectedGroupFilter?: string; // 'ALL' or specific groupId
 }

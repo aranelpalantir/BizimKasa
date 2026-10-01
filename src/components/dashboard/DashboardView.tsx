@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NetWorthCard } from './NetWorthCard';
 import { RealReturnChips } from './RealReturnChips';
 import { RatesTicker } from './RatesTicker';
 import { PortfolioAllocationChart } from './PortfolioAllocationChart';
-import { calculatePortfolioSummary, formatTRY } from '../../services/portfolioService';
-import { ArrowRight, Coins, Euro, LineChart } from 'lucide-react';
-import type { Account, AssetTransaction, MarketRate, CashFlowEntry } from '../../types/finance';
+import { GroupFilterBar } from '../common/GroupFilterBar';
+import { calculatePortfolioSummary, formatTRY, formatNumber } from '../../services/portfolioService';
+import { ArrowRight, Coins, Euro, LineChart, Users } from 'lucide-react';
+import type { Account, AssetTransaction, MarketRate, CashFlowEntry, Group } from '../../types/finance';
 
 interface DashboardViewProps {
+  groups: Group[];
   accounts: Account[];
   transactions: AssetTransaction[];
   rates: MarketRate[];
@@ -22,6 +24,7 @@ const MONTH_NAMES = [
 ];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
+  groups,
   accounts,
   transactions,
   rates,
@@ -31,34 +34,108 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const currentYear = 2026;
   const currentMonth = new Date().getMonth() + 1; // 1-12
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
 
-  // 1. Calculate Portfolio metrics
-  const portfolioSummary = calculatePortfolioSummary(accounts, transactions, rates);
+  // 1. Calculate Portfolio metrics based on selected group
+  const portfolioSummary = calculatePortfolioSummary(
+    accounts,
+    transactions,
+    rates,
+    groups,
+    selectedGroupId
+  );
 
-  // 2. Calculate Current Month Cash Flow
+  // 2. Calculate Current Month Cash Flow based on selected group
   let monthExpense = 0;
   let monthIncome = 0;
   for (const e of cashFlowEntries) {
     if (e.year === currentYear && e.month === currentMonth) {
       const acc = accounts.find(a => a.id === e.accountId);
-      if (acc?.type === 'EXPENSE') monthExpense += e.amount;
-      if (acc?.type === 'INCOME') monthIncome += e.amount;
+      if (acc) {
+        if (selectedGroupId === 'ALL' || acc.groupId === selectedGroupId) {
+          if (acc.type === 'EXPENSE') monthExpense += e.amount;
+          if (acc.type === 'INCOME') monthIncome += e.amount;
+        }
+      }
     }
   }
   const monthRemaining = monthIncome - monthExpense;
 
+  const currentGroupName = selectedGroupId === 'ALL' 
+    ? 'Tüm Portföy (Konsolide)' 
+    : groups.find(g => g.id === selectedGroupId)?.name || 'Grup';
+
   return (
     <div className="space-y-5">
-      {/* Live Market Rates Horizontal Ticker */}
+      {/* Live Market Rates Horizontal Ticker with Groups & 10-day history */}
       <RatesTicker rates={rates} />
 
-      {/* Main Net Worth Hero Card */}
-      <NetWorthCard summary={portfolioSummary} hideValues={hideValues} />
+      {/* Group Filter Bar */}
+      <div className="p-3 rounded-2xl bg-slate-900/60 border border-white/5 space-y-2">
+        <GroupFilterBar
+          groups={groups}
+          selectedGroupId={selectedGroupId}
+          onSelectGroup={setSelectedGroupId}
+          title="Grup Seçimi"
+        />
+      </div>
 
-      {/* Real Return Multi-Currency Chips (Image 5 Metric) */}
+      {/* Main Net Worth Hero Card */}
+      <div className="space-y-1">
+        {selectedGroupId !== 'ALL' && (
+          <div className="flex items-center gap-1.5 px-2 text-xs font-semibold text-amber-400">
+            <Users className="w-3.5 h-3.5" />
+            <span>{currentGroupName} Varlıkları Görüntüleniyor</span>
+          </div>
+        )}
+        <NetWorthCard summary={portfolioSummary} hideValues={hideValues} />
+      </div>
+
+      {/* Real Return Multi-Currency Chips */}
       <RealReturnChips summary={portfolioSummary} hideValues={hideValues} />
 
-      {/* Middle Grid: Cash Flow Snapshot & Asset Quick Action */}
+      {/* GROUP BREAKDOWN CARDS (When Konsolide is active) */}
+      {selectedGroupId === 'ALL' && portfolioSummary.groupBreakdowns.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Ana Grup Dağılımı
+            </h3>
+            <span className="text-[11px] text-slate-500">Kişi / Grup Bazında Net Varlık</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {portfolioSummary.groupBreakdowns.map((gb) => {
+              const isProfit = gb.profitLossTRY >= 0;
+              return (
+                <div
+                  key={gb.group.id}
+                  onClick={() => setSelectedGroupId(gb.group.id)}
+                  className="p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-white/5 hover:border-white/15 cursor-pointer transition-all space-y-1.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: gb.group.color }} />
+                      <span className="text-xs font-bold text-white truncate">{gb.group.name}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500">{gb.positionsCount} varlık</span>
+                  </div>
+
+                  <div className="text-sm font-extrabold text-white font-mono">
+                    {formatTRY(gb.totalValueTRY, hideValues)}
+                  </div>
+
+                  <div className={`text-[10px] font-semibold font-mono ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {isProfit ? '+' : ''}{formatTRY(gb.profitLossTRY, hideValues)} (%{formatNumber(Math.abs(gb.profitLossPct), 1)})
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Middle Grid: Cash Flow Snapshot & Asset Allocation */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Monthly Cash Flow Card */}
         <div className="p-5 rounded-3xl bg-slate-900/80 border border-white/5 space-y-4">
@@ -67,7 +144,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 {MONTH_NAMES[currentMonth - 1]} {currentYear} Bütçe Durumu
               </h3>
-              <span className="text-sm font-bold text-white mt-0.5 block">Hane Nakit Akışı</span>
+              <span className="text-sm font-bold text-white mt-0.5 block">{currentGroupName} Nakit Akışı</span>
             </div>
 
             <button
@@ -151,7 +228,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 group-hover:scale-110 transition-transform">
                 <Euro className="w-5 h-5" />
               </div>
-              <span className="text-[10px] font-mono text-slate-500">Euro & USD</span>
+              <span className="text-[10px] font-mono text-slate-500">Euro & Dolar</span>
             </div>
             <div>
               <span className="text-xs text-slate-400 block font-medium">Döviz Varlığı</span>
@@ -173,10 +250,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 group-hover:scale-110 transition-transform">
                 <LineChart className="w-5 h-5" />
               </div>
-              <span className="text-[10px] font-mono text-slate-500">TEFAS & Borsa</span>
+              <span className="text-[10px] font-mono text-slate-500">Yatırım Fonları</span>
             </div>
             <div>
-              <span className="text-xs text-slate-400 block font-medium">Fon & Hisse Portföyü</span>
+              <span className="text-xs text-slate-400 block font-medium">Fon Portföyü</span>
               <span className="text-lg font-bold font-mono text-white">
                 {formatTRY(
                   portfolioSummary.fundPositions.reduce((s, p) => s + p.currentValueTRY, 0),
