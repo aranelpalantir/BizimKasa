@@ -57,7 +57,7 @@ test.describe('Ayarlar ve Güvenlik (Settings & PIN Security)', () => {
     // Lock screen should disappear and return to app
     await expect(page.getByText('Lütfen devam etmek için kilidi açın')).not.toBeVisible();
 
-    // 5. PIN Korumasını Kaldır
+    // 5. PIN Korumasını Kaldır (Mevcut PIN doğrulaması gerektirir)
     // Navigate back to Settings
     await page.locator('nav').getByRole('button', { name: 'Ayarlar' }).click();
     await page.getByRole('button', { name: 'Kaldır' }).click();
@@ -66,7 +66,14 @@ test.describe('Ayarlar ve Güvenlik (Settings & PIN Security)', () => {
     await expect(confirmModal).toBeVisible();
     await expect(confirmModal.getByText('PIN Korumasını Kaldır')).toBeVisible();
 
-    // Click confirm "Kaldır"
+    // Hatalı PIN dene: 9999
+    const pinAuthInput = confirmModal.locator('input[type="password"]');
+    await pinAuthInput.fill('9999');
+    await confirmModal.getByRole('button', { name: 'Kaldır' }).click();
+    await expect(confirmModal.getByText('Hatalı PIN kodu!')).toBeVisible();
+
+    // Doğru PIN gir: 1234 ve kaldır
+    await pinAuthInput.fill('1234');
     await confirmModal.getByRole('button', { name: 'Kaldır' }).click();
     await expect(confirmModal).not.toBeVisible();
 

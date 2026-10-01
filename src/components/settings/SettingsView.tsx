@@ -21,7 +21,7 @@ import {
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GithubIcon } from '../common/GithubIcon';
-import { hashPin, registerBiometrics, updateSettings } from '../../services/securityService';
+import { hashPin, verifyPin, registerBiometrics, updateSettings } from '../../services/securityService';
 import { 
   exportDatabaseToJSON, 
   exportEncryptedBackup,
@@ -43,6 +43,14 @@ interface SettingsViewProps {
   onTriggerInstall?: () => Promise<void>;
 }
 
+interface PinAuthRequest {
+  title: string;
+  description: string;
+  confirmButtonText?: string;
+  isDestructive?: boolean;
+  onSuccess: () => void | Promise<void>;
+}
+
 export const SettingsView: React.FC<SettingsViewProps> = ({
   settings,
   onRefreshSettings,
@@ -53,9 +61,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onTriggerInstall
 }) => {
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
+
+  // Step-Up PIN Authorization modal state (for sensitive operations)
+  const [pinAuthRequest, setPinAuthRequest] = useState<PinAuthRequest | null>(null);
+  const [pinAuthInput, setPinAuthInput] = useState('');
+  const [pinAuthError, setPinAuthError] = useState<string | null>(null);
 
   // Encrypted Export state
   const [isEncryptedExportModalOpen, setIsEncryptedExportModalOpen] = useState(false);
@@ -74,19 +88,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isDecrypting, setIsDecrypting] = useState(false);
 
   // Input refs for automatic focus when modals open
+  const currentPinInputRef = useRef<HTMLInputElement>(null);
   const pinInputRef = useRef<HTMLInputElement>(null);
   const confirmPinInputRef = useRef<HTMLInputElement>(null);
+  const pinAuthInputRef = useRef<HTMLInputElement>(null);
   const exportPasswordInputRef = useRef<HTMLInputElement>(null);
   const importPasswordInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isPinModalOpen) {
       const timer = setTimeout(() => {
-        pinInputRef.current?.focus();
+        if (settings.pinHash) {
+          currentPinInputRef.current?.focus();
+        } else {
+          pinInputRef.current?.focus();
+        }
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [isPinModalOpen]);
+  }, [isPinModalOpen, settings.pinHash]);
+
+  useEffect(() => {
+    if (pinAuthRequest) {
+      const timer = setTimeout(() => {
+        pinAuthInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [pinAuthRequest]);
 
   useEffect(() => {
     if (isEncryptedExportModalOpen) {
@@ -128,7 +157,77 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTimeout(() => setFeedbackMsg(null), 3500);
   };
 
+  // Helper to enforce PIN verification before sensitive actions
+  const requirePinAuth = (
+    title: string,
+    description: string,
+    onSuccess: () => void | Promise<void>,
+    options?: { confirmButtonText?: string; isDestructive?: boolean }
+  ) => {
+    if (!settings.pinHash) {
+      onSuccess();
+      return;
+    }
+    setPinAuthInput('');
+    setPinAuthError(null);
+    setPinAuthRequest({
+      title,
+      description,
+      confirmButtonText: options?.confirmButtonText || 'Onayla',
+      isDestructive: options?.isDestructive ?? false,
+      onSuccess
+    });
+  };
+
+  const handleVerifyPinAuth = async () => {
+    if (!pinAuthRequest) return;
+    if (!settings.pinHash) {
+      const action = pinAuthRequest.onSuccess;
+      setPinAuthRequest(null);
+      await action();
+      return;
+    }
+
+    if (!pinAuthInput) {
+      setPinAuthError('Lütfen PIN kodunuzu girin.');
+      pinAuthInputRef.current?.focus();
+      return;
+    }
+
+    const isValid = await verifyPin(pinAuthInput, settings.pinHash);
+    if (!isValid) {
+      setPinAuthError('Hatalı PIN kodu!');
+      pinAuthInputRef.current?.focus();
+      return;
+    }
+
+    const action = pinAuthRequest.onSuccess;
+    setPinAuthRequest(null);
+    setPinAuthInput('');
+    setPinAuthError(null);
+    await action();
+  };
+
   const handleSavePin = async () => {
+    // If PIN already exists, verify current PIN first
+    if (settings.pinHash) {
+      if (!currentPin) {
+        setPinError('Lütfen mevcut PIN kodunuzu girin.');
+        currentPinInputRef.current?.focus();
+        return;
+      }
+      const isCurrentValid = await verifyPin(currentPin, settings.pinHash);
+      if (!isCurrentValid) {
+        setPinError('Mevcut PIN kodunuz hatalı!');
+        currentPinInputRef.current?.focus();
+        return;
+      }
+      if (newPin === currentPin) {
+        setPinError('Yeni PIN mevcut PIN ile aynı olamaz.');
+        return;
+      }
+    }
+
     if (newPin.length < 4) {
       setPinError('PIN en az 4 haneli olmalıdır.');
       return;
@@ -143,22 +242,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       await updateSettings({ pinHash: hashed, pinLength: newPin.length });
       onRefreshSettings();
       setIsPinModalOpen(false);
+      setCurrentPin('');
       setNewPin('');
       setConfirmPin('');
-      showFeedback('success', 'PIN kodu başarıyla kaydedildi!');
+      setPinError(null);
+      showFeedback('success', settings.pinHash ? 'PIN kodu başarıyla güncellendi!' : 'PIN kodu başarıyla kaydedildi!');
     } catch (err: any) {
       setPinError(`Kayıt sırasında hata oluştu: ${err?.message || 'Bilinmeyen hata'}`);
     }
   };
 
   const handleRemovePin = () => {
-    setConfirmState({
-      isOpen: true,
-      title: 'PIN Korumasını Kaldır',
-      message: 'Uygulama PIN koruması ve biyometrik kilit devre dışı bırakılacaktır. Onaylıyor musunuz?',
-      confirmText: 'Kaldır',
-      isDestructive: true,
-      onConfirm: async () => {
+    requirePinAuth(
+      'PIN Korumasını Kaldır',
+      'PIN korumasını ve biyometrik kilidi kaldırmak için lütfen mevcut PIN kodunuzu girin.',
+      async () => {
         await updateSettings({
           pinHash: undefined,
           pinLength: undefined,
@@ -167,8 +265,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         });
         onRefreshSettings();
         showFeedback('success', 'PIN koruması kaldırıldı.');
-      }
-    });
+      },
+      { confirmButtonText: 'Kaldır', isDestructive: true }
+    );
   };
 
   const handleToggleBiometrics = async () => {
@@ -191,12 +290,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         showFeedback('error', res.errorReason || 'Biyometrik sensör bulunamadı veya onaylanmadı.');
       }
     } else {
-      await updateSettings({
-        biometricsEnabled: false,
-        biometricCredentialId: undefined
-      });
-      onRefreshSettings();
-      showFeedback('success', 'Biyometrik doğrulama devre dışı bırakıldı.');
+      // Prompt for PIN to disable biometrics
+      requirePinAuth(
+        'Biyometrik Korumayı Kapat',
+        'Biyometrik doğrulamayı devre dışı bırakmak için lütfen mevcut PIN kodunuzu girin.',
+        async () => {
+          await updateSettings({
+            biometricsEnabled: false,
+            biometricCredentialId: undefined
+          });
+          onRefreshSettings();
+          showFeedback('success', 'Biyometrik doğrulama devre dışı bırakıldı.');
+        },
+        { confirmButtonText: 'Kapat', isDestructive: false }
+      );
     }
   };
 
@@ -205,13 +312,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     onRefreshSettings();
   };
 
-  const handleBackupExport = async () => {
-    try {
-      await exportDatabaseToJSON();
-      showFeedback('success', 'Yedek dosyası cihazınıza indirildi.');
-    } catch {
-      showFeedback('error', 'Yedekleme sırasında hata oluştu.');
-    }
+  const handleBackupExport = () => {
+    requirePinAuth(
+      'Yedeği İndir (JSON)',
+      'Finansal verilerinizin şifresiz JSON yedeğini indirmek için lütfen PIN kodunuzu girin.',
+      async () => {
+        try {
+          await exportDatabaseToJSON();
+          showFeedback('success', 'Yedek dosyası cihazınıza indirildi.');
+        } catch {
+          showFeedback('error', 'Yedekleme sırasında hata oluştu.');
+        }
+      },
+      { confirmButtonText: 'İndir' }
+    );
   };
 
   const handleExecuteEncryptedExport = async () => {
@@ -262,14 +376,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           message: 'Mevcut tüm veriler silinecek ve seçtiğiniz standart yedek dosyası yüklenecektir. Bu işlemi onaylıyor musunuz?',
           confirmText: 'Yedeği Yükle',
           isDestructive: true,
-          onConfirm: async () => {
-            const res = await restorePlainBackup(check.data);
-            if (res.success) {
-              showFeedback('success', res.message);
-              setTimeout(() => window.location.reload(), 800);
-            } else {
-              showFeedback('error', res.message);
-            }
+          onConfirm: () => {
+            requirePinAuth(
+              'Yedeği Geri Yükleme Onayı',
+              'Mevcut verilerin üzerine yazıp yedeği geri yüklemek için lütfen PIN kodunuzu girin.',
+              async () => {
+                const res = await restorePlainBackup(check.data);
+                if (res.success) {
+                  showFeedback('success', res.message);
+                  setTimeout(() => window.location.reload(), 800);
+                } else {
+                  showFeedback('error', res.message);
+                }
+              },
+              { confirmButtonText: 'Yedeği Yükle', isDestructive: true }
+            );
           }
         });
       }
@@ -286,22 +407,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
 
-    setIsDecrypting(true);
-    setDecryptError(null);
-    try {
-      const res = await restoreEncryptedBackup(encryptedBackupData, importPassword);
-      if (res.success) {
-        setIsDecryptModalOpen(false);
-        showFeedback('success', res.message);
-        setTimeout(() => window.location.reload(), 800);
-      } else {
-        setDecryptError(res.message);
-      }
-    } catch (err: any) {
-      setDecryptError(err?.message || 'Şifre çözme hatası!');
-    } finally {
-      setIsDecrypting(false);
-    }
+    requirePinAuth(
+      'Şifreli Yedeği Yükle',
+      'Şifresi çözülen yedeği mevcut verilerin üzerine yazmak için lütfen PIN kodunuzu girin.',
+      async () => {
+        setIsDecrypting(true);
+        setDecryptError(null);
+        try {
+          const res = await restoreEncryptedBackup(encryptedBackupData, importPassword);
+          if (res.success) {
+            setIsDecryptModalOpen(false);
+            showFeedback('success', res.message);
+            setTimeout(() => window.location.reload(), 800);
+          } else {
+            setDecryptError(res.message);
+          }
+        } catch (err: any) {
+          setDecryptError(err?.message || 'Şifre çözme hatası!');
+        } finally {
+          setIsDecrypting(false);
+        }
+      },
+      { confirmButtonText: 'Yedeği Yükle', isDestructive: true }
+    );
   };
 
   const handleResetSample = () => {
@@ -311,10 +439,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       message: 'Mevcut tüm veriler sıfırlanıp zengin ve gerçekçi örnek başlangıç verileri yeniden yüklenecektir. Bu işlemi onaylıyor musunuz?',
       confirmText: 'Örnek Verileri Yükle',
       isDestructive: true,
-      onConfirm: async () => {
-        await resetToSampleData();
-        showFeedback('success', 'Örnek veriler başarıyla yüklendi.');
-        setTimeout(() => window.location.reload(), 800);
+      onConfirm: () => {
+        requirePinAuth(
+          'Örnek Verileri Yükle',
+          'Mevcut verileri sıfırlayıp örnek verileri yüklemek için lütfen PIN kodunuzu girin.',
+          async () => {
+            await resetToSampleData();
+            showFeedback('success', 'Örnek veriler başarıyla yüklendi.');
+            setTimeout(() => window.location.reload(), 800);
+          },
+          { confirmButtonText: 'Örnek Verileri Yükle', isDestructive: true }
+        );
       }
     });
   };
@@ -326,14 +461,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       message: 'DİKKAT! Kayıtlı tüm ana gruplar, hesaplar, bütçe/nakit akışı verileri, varlık (altın, döviz, fon) alım-satım hareketleri ve hedefler kalıcı olarak silinecektir. Güvenlik ve PIN ayarlarınız korunur. Bu işlem geri alınamaz. Onaylıyor musunuz?',
       confirmText: 'Evet, Tümünü Sil',
       isDestructive: true,
-      onConfirm: async () => {
-        try {
-          await clearAllDatabaseData();
-          showFeedback('success', 'Tüm kullanıcı verileri başarıyla silindi.');
-          setTimeout(() => window.location.reload(), 800);
-        } catch (err: any) {
-          showFeedback('error', `Silme işlemi sırasında hata oluştu: ${err?.message || 'Bilinmeyen hata'}`);
-        }
+      onConfirm: () => {
+        requirePinAuth(
+          'Tüm Verileri Silmeyi Onayla',
+          'Tüm verilerinizi kalıcı olarak silmek üzeresiniz. Bu işlemi onaylamak için lütfen PIN kodunuzu girin.',
+          async () => {
+            try {
+              await clearAllDatabaseData();
+              showFeedback('success', 'Tüm kullanıcı verileri başarıyla silindi.');
+              setTimeout(() => window.location.reload(), 800);
+            } catch (err: any) {
+              showFeedback('error', `Silme işlemi sırasında hata oluştu: ${err?.message || 'Bilinmeyen hata'}`);
+            }
+          },
+          { confirmButtonText: 'Tümünü Sil', isDestructive: true }
+        );
       }
     });
   };
@@ -658,25 +800,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </a>
       </div>
 
-      {/* PIN Setup Modal */}
+      {/* PIN Setup / Change Modal */}
       <Modal
         isOpen={isPinModalOpen}
         onClose={() => {
           setIsPinModalOpen(false);
           setPinError(null);
+          setCurrentPin('');
           setNewPin('');
           setConfirmPin('');
         }}
-        title="Uygulama PIN Kodu Belirle"
+        title={settings.pinHash ? 'PIN Kodunu Değiştir' : 'Uygulama PIN Kodu Belirle'}
       >
         <div className="space-y-4">
+          {settings.pinHash && (
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                Mevcut PIN Kodunuz
+              </label>
+              <input
+                ref={currentPinInputRef}
+                autoFocus
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={currentPin}
+                onChange={(e) => {
+                  setCurrentPin(e.target.value.replace(/\D/g, ''));
+                  setPinError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    pinInputRef.current?.focus();
+                  }
+                }}
+                placeholder="••••"
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-center text-xl tracking-widest focus:outline-none focus:border-amber-400"
+              />
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">
-              4 veya 6 Haneli Sayısal PIN
+              {settings.pinHash ? 'Yeni 4 veya 6 Haneli PIN' : '4 veya 6 Haneli Sayısal PIN'}
             </label>
             <input
               ref={pinInputRef}
-              autoFocus
+              autoFocus={!settings.pinHash}
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
@@ -703,7 +875,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">
-              PIN Kodunu Tekrar Girin
+              {settings.pinHash ? 'Yeni PIN Kodunu Tekrar Girin' : 'PIN Kodunu Tekrar Girin'}
             </label>
             <input
               ref={confirmPinInputRef}
@@ -731,7 +903,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div className="flex justify-end gap-2 pt-2">
             <button
-              onClick={() => setIsPinModalOpen(false)}
+              onClick={() => {
+                setIsPinModalOpen(false);
+                setPinError(null);
+                setCurrentPin('');
+                setNewPin('');
+                setConfirmPin('');
+              }}
               className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium"
             >
               Vazgeç
@@ -740,7 +918,87 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               onClick={handleSavePin}
               className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400"
             >
-              PIN Kodunu Kaydet
+              {settings.pinHash ? 'PIN Kodunu Güncelle' : 'PIN Kodunu Kaydet'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Step-Up PIN Authorization Modal */}
+      <Modal
+        isOpen={!!pinAuthRequest}
+        onClose={() => {
+          setPinAuthRequest(null);
+          setPinAuthInput('');
+          setPinAuthError(null);
+        }}
+        title={pinAuthRequest?.title || 'PIN Doğrulaması'}
+      >
+        <div className="space-y-4">
+          <div className={`p-3 rounded-xl border text-xs leading-relaxed flex items-start gap-2.5 ${
+            pinAuthRequest?.isDestructive
+              ? 'bg-rose-500/10 border-rose-500/20 text-rose-200/90'
+              : 'bg-amber-500/10 border-amber-500/20 text-amber-200/90'
+          }`}>
+            <Lock className={`w-4 h-4 shrink-0 mt-0.5 ${
+              pinAuthRequest?.isDestructive ? 'text-rose-400' : 'text-amber-400'
+            }`} />
+            <span>{pinAuthRequest?.description || 'Devam etmek için lütfen PIN kodunuzu girin.'}</span>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1.5 text-center">
+              Mevcut PIN Kodunuzu Girin
+            </label>
+            <input
+              ref={pinAuthInputRef}
+              autoFocus
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={pinAuthInput}
+              onChange={(e) => {
+                setPinAuthInput(e.target.value.replace(/\D/g, ''));
+                setPinAuthError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleVerifyPinAuth();
+              }}
+              placeholder="••••"
+              className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white font-mono text-center text-xl tracking-widest focus:outline-none transition-colors ${
+                pinAuthRequest?.isDestructive
+                  ? 'border-rose-500/30 focus:border-rose-400'
+                  : 'border-white/10 focus:border-amber-400'
+              }`}
+            />
+          </div>
+
+          {pinAuthError && (
+            <p className="text-xs text-rose-400 font-medium text-center">{pinAuthError}</p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => {
+                setPinAuthRequest(null);
+                setPinAuthInput('');
+                setPinAuthError(null);
+              }}
+              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700 transition-colors"
+            >
+              Vazgeç
+            </button>
+            <button
+              onClick={handleVerifyPinAuth}
+              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
+                pinAuthRequest?.isDestructive
+                  ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/20'
+                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+              }`}
+            >
+              {pinAuthRequest?.confirmButtonText || 'Onayla'}
             </button>
           </div>
         </div>
