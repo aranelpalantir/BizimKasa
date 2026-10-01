@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Plus, Coins, ArrowUpRight, ArrowDownRight, History, Trash2, Calendar, Filter } from 'lucide-react';
+import { Plus, Coins, ArrowUpRight, ArrowDownRight, History, Trash2, Calendar, Filter, Sparkles } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GroupFilterBar } from '../common/GroupFilterBar';
 import { db } from '../../db/db';
 import { formatTRY, formatNumber } from '../../services/portfolioService';
@@ -18,8 +19,6 @@ const MONTH_NAMES = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ];
-
-const AVAILABLE_YEARS = [2025, 2026, 2027];
 
 type GoldTypeTab = 'PHYSICAL_GRAM' | 'BANK_GRAM' | 'CEYREK';
 type HistoryFilter = 'ALL' | '1M' | '3M' | '6M' | 'THIS_YEAR' | 'PREV_YEAR';
@@ -47,10 +46,18 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [note, setNote] = useState('');
 
-  // Determine current asset subType
-  const currentSubType: AssetSubType = 
-    activeGoldType === 'PHYSICAL_GRAM' ? 'GOLD_GRAM_PHYSICAL' :
-    activeGoldType === 'BANK_GRAM' ? 'GOLD_GRAM_BANK' : 'GOLD_CEYREK';
+  // Confirm delete dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   // Rates
   const physGramRate = rates.find(r => r.symbol === 'XAU_GR_PHYSICAL')?.rateTRY || 6710.00;
@@ -60,6 +67,57 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   const currentRate = 
     activeGoldType === 'PHYSICAL_GRAM' ? physGramRate :
     activeGoldType === 'BANK_GRAM' ? bankGramRate : ceyrekRate;
+
+  // CONSOLIDATED GOLD CALCULATION IN GRAMS ACROSS ALL 3 TYPES
+  const calcTotalGoldEquivalent = () => {
+    const physAccounts = accounts.filter(a => a.subType === 'GOLD_GRAM_PHYSICAL' && (selectedGroupId === 'ALL' || a.groupId === selectedGroupId));
+    const bankAccounts = accounts.filter(a => a.subType === 'GOLD_GRAM_BANK' && (selectedGroupId === 'ALL' || a.groupId === selectedGroupId));
+    const ceyrekAccounts = accounts.filter(a => a.subType === 'GOLD_CEYREK' && (selectedGroupId === 'ALL' || a.groupId === selectedGroupId));
+
+    const physIds = new Set(physAccounts.map(a => a.id));
+    const bankIds = new Set(bankAccounts.map(a => a.id));
+    const ceyrekIds = new Set(ceyrekAccounts.map(a => a.id));
+
+    let physQty = 0;
+    let bankQty = 0;
+    let ceyrekQty = 0;
+
+    for (const t of transactions) {
+      if (physIds.has(t.accountId)) {
+        physQty += (t.type === 'BUY' ? t.quantity : -t.quantity);
+      } else if (bankIds.has(t.accountId)) {
+        bankQty += (t.type === 'BUY' ? t.quantity : -t.quantity);
+      } else if (ceyrekIds.has(t.accountId)) {
+        ceyrekQty += (t.type === 'BUY' ? t.quantity : -t.quantity);
+      }
+    }
+
+    physQty = Math.max(0, physQty);
+    bankQty = Math.max(0, bankQty);
+    ceyrekQty = Math.max(0, ceyrekQty);
+
+    // 1 Çeyrek Altın = 1.75 gr kabul edilir
+    const ceyrekInGrams = ceyrekQty * 1.75;
+    const totalGrams = physQty + bankQty + ceyrekInGrams;
+    const totalValueTRY = (physQty * physGramRate) + (bankQty * bankGramRate) + (ceyrekQty * ceyrekRate);
+
+    return { physQty, bankQty, ceyrekQty, ceyrekInGrams, totalGrams, totalValueTRY };
+  };
+
+  const goldSummary = calcTotalGoldEquivalent();
+
+  // Filter groups: only show groups that have gold accounts with at least one transaction
+  const groupsWithGold = groups.filter(g => {
+    const gAccounts = accounts.filter(a => a.groupId === g.id && (a.subType === 'GOLD_GRAM_PHYSICAL' || a.subType === 'GOLD_GRAM_BANK' || a.subType === 'GOLD_CEYREK'));
+    if (gAccounts.length === 0) return false;
+    const gAccIds = new Set(gAccounts.map(a => a.id));
+    return transactions.some(t => gAccIds.has(t.accountId));
+  });
+
+  // Determine current asset subType
+  const currentSubType: AssetSubType = 
+    activeGoldType === 'PHYSICAL_GRAM' ? 'GOLD_GRAM_PHYSICAL' :
+    activeGoldType === 'BANK_GRAM' ? 'GOLD_GRAM_BANK' : 'GOLD_CEYREK';
 
   // Filter accounts for this gold subType, respecting group filter
   const matchingAccounts = accounts.filter(a => {
@@ -72,6 +130,39 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
 
   // Transactions for matching accounts
   const assetTxs = transactions.filter(t => matchingAccountIds.has(t.accountId));
+
+  // Dynamic years from asset transactions
+  const uniqueYears = Array.from(new Set(assetTxs.map(t => t.year)));
+  const dynamicYears = Array.from(new Set([2024, 2025, 2026, 2027, ...uniqueYears])).sort((a, b) => a - b);
+
+  // Multi-Year Monthly Matrix calculations
+  const getMatrixCell = (year: number, month: number) => {
+    const mtx = assetTxs.filter(t => t.year === year && t.month === month);
+    let net = 0;
+    for (const t of mtx) {
+      if (t.type === 'BUY') net += t.quantity;
+      else net -= t.quantity;
+    }
+    return net;
+  };
+
+  const getYearTotal = (year: number) => {
+    const ytx = assetTxs.filter(t => t.year === year);
+    let net = 0;
+    for (const t of ytx) {
+      if (t.type === 'BUY') net += t.quantity;
+      else net -= t.quantity;
+    }
+    return net;
+  };
+
+  const getMonthTotalAcrossYears = (month: number) => {
+    let net = 0;
+    for (const y of dynamicYears) {
+      net += getMatrixCell(y, month);
+    }
+    return net;
+  };
 
   // Monthly aggregates for selectedYear (Months 1-12)
   const monthlyData = Array.from({ length: 12 }, (_, i) => {
@@ -92,7 +183,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
     return { month, qty, cost, avgCost };
   });
 
-  // Overall holdings across all time
+  // Overall holdings across all time for this gold type
   let totalBoughtQty = 0;
   let totalCostTRY = 0;
   for (const t of assetTxs) {
@@ -155,32 +246,47 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
     }
   };
 
+  const handleOpenAddModal = () => {
+    // If a group is selected in the filter, pre-select it
+    const targetGrp = selectedGroupId !== 'ALL' ? selectedGroupId : (groups[0]?.id || '');
+    setTargetGroupId(targetGrp);
+
+    const existingAcc = accounts.find(a => a.groupId === targetGrp && a.subType === currentSubType);
+    setTargetAccountId(existingAcc?.id || '');
+    setUnitTRY(currentRate.toString());
+    setQuantity('');
+    setTotalTRY('');
+    setNote('');
+    setIsModalOpen(true);
+  };
+
   const handleSaveTransaction = async () => {
     let finalAccountId = targetAccountId;
 
-    // If no existing account selected, automatically create or find one under targetGroupId
     if (!finalAccountId) {
-      let existingAcc = accounts.find(a => a.groupId === targetGroupId && a.subType === currentSubType);
-      if (!existingAcc) {
-        const typeName = 
+      const existingAcc = accounts.find(a => a.groupId === targetGroupId && a.subType === currentSubType);
+      if (existingAcc) {
+        finalAccountId = existingAcc.id;
+      } else {
+        const groupObj = groups.find(g => g.id === targetGroupId);
+        const typeTitle = 
           activeGoldType === 'PHYSICAL_GRAM' ? 'Fiziki Gram Altın' :
           activeGoldType === 'BANK_GRAM' ? 'Banka Gram Altın' : 'Çeyrek Altın';
-        const groupObj = groups.find(g => g.id === targetGroupId);
+
         const newAcc: Account = {
           id: `acc-gold-${Date.now()}`,
           groupId: targetGroupId,
-          name: `${groupObj?.name || ''} ${typeName}`.trim(),
+          name: `${groupObj?.name || ''} ${typeTitle}`.trim(),
           type: 'ASSET',
           subType: currentSubType,
-          symbol: activeGoldType === 'PHYSICAL_GRAM' ? 'XAU_GR_PHYSICAL' : activeGoldType === 'BANK_GRAM' ? 'XAU_GR_BANK' : 'XAU_CEYREK',
+          symbol: activeGoldType === 'PHYSICAL_GRAM' ? 'XAU_GR_PHYSICAL' :
+                  activeGoldType === 'BANK_GRAM' ? 'XAU_GR_BANK' : 'XAU_CEYREK',
           currency: 'TRY',
           order: accounts.length + 1,
           createdAt: new Date().toISOString()
         };
         await db.accounts.add(newAcc);
         finalAccountId = newAcc.id;
-      } else {
-        finalAccountId = existingAcc.id;
       }
     }
 
@@ -214,80 +320,105 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
     setNote('');
   };
 
-  const handleDeleteTx = async (id: string) => {
-    await db.transactions.delete(id);
+  const handleDeleteTx = (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'İşlemi Sil',
+      message: 'Bu altın alış/satış kaydını silmek istediğinize emin misiniz?',
+      onConfirm: async () => {
+        await db.transactions.delete(id);
+      }
+    });
   };
 
-  const unitLabel = activeGoldType === 'CEYREK' ? 'adet' : 'gr';
+  const unitLabel = activeGoldType === 'CEYREK' ? 'Adet' : 'Gram';
 
   return (
     <div className="space-y-4">
-      {/* Top Header: SubType Tabs, Year Selector, Group Filter */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Gold SubType Switcher */}
-          <div className="flex p-1 rounded-xl bg-slate-800 border border-white/5 overflow-x-auto no-scrollbar">
-            <button
-              onClick={() => setActiveGoldType('BANK_GRAM')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                activeGoldType === 'BANK_GRAM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Coins className="w-3.5 h-3.5" />
-              <span>Banka Gram Altın</span>
-            </button>
-            <button
-              onClick={() => setActiveGoldType('PHYSICAL_GRAM')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                activeGoldType === 'PHYSICAL_GRAM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Coins className="w-3.5 h-3.5" />
-              <span>Fiziki Gram Altın</span>
-            </button>
-            <button
-              onClick={() => setActiveGoldType('CEYREK')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                activeGoldType === 'CEYREK' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Coins className="w-3.5 h-3.5" />
-              <span>Fiziki Çeyrek Altın</span>
-            </button>
+      {/* CONSOLIDATED GOLD IN GRAMS BANNER */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-slate-900 border border-amber-500/30 shadow-lg">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-xs font-semibold text-amber-300 uppercase tracking-wider block">
+                Toplam Altın Varlığı (Gram Karşılığı)
+              </span>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-2xl font-black text-white font-mono">
+                  {hideValues ? '••••' : `${formatNumber(goldSummary.totalGrams, 2)} gr`}
+                </span>
+                <span className="text-xs text-slate-400 font-mono">
+                  ≈ {formatTRY(goldSummary.totalValueTRY, hideValues)}
+                </span>
+              </div>
+            </div>
           </div>
 
-          {/* Year Selector */}
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-800 border border-white/10">
-            <Calendar className="w-3.5 h-3.5 text-amber-400 ml-1.5" />
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-transparent text-white font-bold text-xs focus:outline-none pr-2 cursor-pointer"
-            >
-              {AVAILABLE_YEARS.map((y) => (
-                <option key={y} value={y} className="bg-slate-900 text-white">
-                  {y} Yılı Tablosu
-                </option>
-              ))}
-            </select>
+          {/* Quick breakdown tags */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="px-2.5 py-1 rounded-xl bg-slate-950/60 border border-white/10 text-slate-300">
+              <span className="text-slate-500 mr-1.5">Banka:</span>
+              <span className="font-bold text-amber-300 font-mono">{formatNumber(goldSummary.bankQty, 2, hideValues)} gr</span>
+            </div>
+            <div className="px-2.5 py-1 rounded-xl bg-slate-950/60 border border-white/10 text-slate-300">
+              <span className="text-slate-500 mr-1.5">Fiziki:</span>
+              <span className="font-bold text-amber-300 font-mono">{formatNumber(goldSummary.physQty, 2, hideValues)} gr</span>
+            </div>
+            <div className="px-2.5 py-1 rounded-xl bg-slate-950/60 border border-white/10 text-slate-300">
+              <span className="text-slate-500 mr-1.5">Çeyrek:</span>
+              <span className="font-bold text-amber-300 font-mono">{formatNumber(goldSummary.ceyrekQty, 0, hideValues)} Adet (~{formatNumber(goldSummary.ceyrekInGrams, 2, hideValues)} gr)</span>
+            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Sub-Type Switcher Tabs & Action */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5">
+        <div className="flex flex-wrap p-1 rounded-xl bg-slate-800 border border-white/5">
+          <button
+            onClick={() => setActiveGoldType('BANK_GRAM')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+              activeGoldType === 'BANK_GRAM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Coins className="w-3.5 h-3.5" />
+            <span>Banka Gram Altın</span>
+          </button>
+          <button
+            onClick={() => setActiveGoldType('PHYSICAL_GRAM')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+              activeGoldType === 'PHYSICAL_GRAM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Coins className="w-3.5 h-3.5" />
+            <span>Fiziki Gram Altın</span>
+          </button>
+          <button
+            onClick={() => setActiveGoldType('CEYREK')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+              activeGoldType === 'CEYREK' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Coins className="w-3.5 h-3.5" />
+            <span>Çeyrek Altın</span>
+          </button>
         </div>
 
         <button
-          onClick={() => {
-            setUnitTRY(currentRate.toString());
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-colors shadow-lg shadow-amber-500/20"
+          onClick={handleOpenAddModal}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-colors shadow-lg shadow-amber-500/20 active:scale-95"
         >
           <Plus className="w-4 h-4" />
           <span>Altın Al / Bozdur</span>
         </button>
       </div>
 
-      {/* Group Filter Bar */}
+      {/* Group Filter Bar: Only show groups that have gold assets */}
       <GroupFilterBar
-        groups={groups}
+        groups={groupsWithGold.length > 0 ? groupsWithGold : groups}
         selectedGroupId={selectedGroupId}
         onSelectGroup={setSelectedGroupId}
         title="Hesap Grubu"
@@ -343,13 +474,109 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
         </div>
       </div>
 
-      {/* MONTHLY BREAKDOWN TABLE (Full 12 Months) */}
+      {/* MULTI-YEAR MONTHLY MOVEMENT MATRIX (Yıllar x Aylar) */}
       <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl">
+        <div className="p-3 bg-slate-950/80 border-b border-white/10 flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-200">
+            {activeGoldType === 'PHYSICAL_GRAM' ? 'Fiziki Gram Altın' : activeGoldType === 'BANK_GRAM' ? 'Banka Gram Altın' : 'Çeyrek Altın'} Yıllık Hareket Matrisi (Giriş / Çıkış)
+          </span>
+          <span className="text-[10px] text-slate-400">Net {unitLabel} değişimi (Satışlar eksi olarak gösterilir)</span>
+        </div>
+
+        <table className="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr className="bg-slate-950/90 border-b border-white/10 text-slate-400 font-semibold">
+              <th className="py-2.5 px-3 min-w-[70px] sticky left-0 z-20 bg-slate-950/95 border-r border-white/10">
+                Yıl
+              </th>
+              {MONTH_NAMES.map((m, idx) => (
+                <th key={idx} className="py-2.5 px-2 min-w-[65px] text-right font-medium">
+                  {m.slice(0, 3)}
+                </th>
+              ))}
+              <th className="py-2.5 px-3 min-w-[90px] text-right font-bold text-amber-400 bg-slate-950/95">
+                Genel Toplam
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5 font-mono">
+            {dynamicYears.map((year) => {
+              const yearTotal = getYearTotal(year);
+              return (
+                <tr key={year} className="hover:bg-white/[0.02] transition-colors">
+                  <td className="py-2 px-3 text-slate-300 font-sans font-bold sticky left-0 z-10 bg-slate-900/95 border-r border-white/10">
+                    {year}
+                  </td>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                    const val = getMatrixCell(year, month);
+                    return (
+                      <td
+                        key={month}
+                        className={`py-2 px-2 text-right ${
+                          val > 0 ? 'text-slate-200' : val < 0 ? 'text-rose-400 font-bold' : 'text-slate-600'
+                        }`}
+                      >
+                        {val !== 0 ? formatNumber(val, activeGoldType === 'CEYREK' ? 0 : 2, hideValues) : '-'}
+                      </td>
+                    );
+                  })}
+                  <td className={`py-2 px-3 text-right font-bold bg-slate-900/90 ${yearTotal < 0 ? 'text-rose-400' : 'text-amber-300'}`}>
+                    {yearTotal !== 0 ? formatNumber(yearTotal, activeGoldType === 'CEYREK' ? 0 : 2, hideValues) : '-'}
+                  </td>
+                </tr>
+              );
+            })}
+
+            <tr className="bg-slate-950/95 font-bold text-amber-300 border-t-2 border-white/10">
+              <td className="py-2.5 px-3 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
+                Genel Toplam
+              </td>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                const monthTotal = getMonthTotalAcrossYears(month);
+                return (
+                  <td key={month} className={`py-2.5 px-2 text-right ${monthTotal < 0 ? 'text-rose-400' : 'text-slate-200'}`}>
+                    {monthTotal !== 0 ? formatNumber(monthTotal, activeGoldType === 'CEYREK' ? 0 : 2, hideValues) : '-'}
+                  </td>
+                );
+              })}
+              <td className="py-2.5 px-3 text-right font-extrabold text-amber-400 text-sm bg-slate-950">
+                {formatNumber(currentHoldingQty, activeGoldType === 'CEYREK' ? 0 : 2, hideValues)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* SINGLE YEAR DETAILED METRICS BREAKDOWN (Clean Turkish, no "SUM") */}
+      <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl">
+        <div className="p-3 bg-slate-950/80 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-200">
+              Aylık Detay Göstergeleri ({selectedYear})
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-800 border border-white/10">
+            <Calendar className="w-3.5 h-3.5 text-amber-400 ml-1.5" />
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="bg-transparent text-white font-bold text-xs focus:outline-none pr-2 cursor-pointer"
+            >
+              {dynamicYears.map((y) => (
+                <option key={y} value={y} className="bg-slate-900 text-white">
+                  {y} Yılı
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <table className="w-full text-left text-xs border-collapse">
           <thead>
             <tr className="bg-slate-950/80 border-b border-white/10 text-slate-400 font-semibold">
-              <th className="py-2.5 px-3 min-w-[140px] sticky left-0 z-20 bg-slate-950/95 border-r border-white/10">
-                Ay / Metrik ({selectedYear})
+              <th className="py-2.5 px-3 min-w-[170px] sticky left-0 z-20 bg-slate-950/95 border-r border-white/10">
+                Ay / Göstergeler ({selectedYear})
               </th>
               {monthlyData.map((d) => (
                 <th key={d.month} className="py-2.5 px-2.5 min-w-[80px] text-right font-medium">
@@ -362,10 +589,10 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 font-mono">
-            {/* Row 1: SUM / Miktar */}
+            {/* Row 1: Toplam Miktar */}
             <tr className="hover:bg-white/[0.02]">
               <td className="py-2 px-3 text-slate-300 font-sans font-medium sticky left-0 z-10 bg-slate-900/95 border-r border-white/10">
-                SUM / Miktar ({unitLabel})
+                Toplam Miktar ({unitLabel})
               </td>
               {monthlyData.map((d) => (
                 <td key={d.month} className="py-2 px-2 text-right text-slate-300">
@@ -377,10 +604,10 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
               </td>
             </tr>
 
-            {/* Row 2: SUM / Tutar */}
+            {/* Row 2: Toplam Maliyet */}
             <tr className="hover:bg-white/[0.02]">
               <td className="py-2 px-3 text-slate-300 font-sans font-medium sticky left-0 z-10 bg-slate-900/95 border-r border-white/10">
-                SUM / Tutar (TL)
+                Toplam Maliyet (TL)
               </td>
               {monthlyData.map((d) => (
                 <td key={d.month} className="py-2 px-2 text-right text-slate-300">
@@ -392,10 +619,10 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
               </td>
             </tr>
 
-            {/* Row 3: Ortalama Maliyetler */}
+            {/* Row 3: Ortalama Birim Maliyet */}
             <tr className="bg-amber-500/5 font-semibold text-amber-200">
               <td className="py-2 px-3 font-sans sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
-                Ortalama Maliyetler
+                Ortalama Birim Maliyet (TL)
               </td>
               {monthlyData.map((d) => (
                 <td key={d.month} className="py-2 px-2 text-right">
@@ -493,6 +720,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
                     <button
                       onClick={() => handleDeleteTx(tx.id)}
                       className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
+                      title="İşlemi Sil"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -546,7 +774,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
                 setTargetGroupId(e.target.value);
                 setTargetAccountId('');
               }}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
             >
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>{g.name}</option>
@@ -630,6 +858,15 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Modern Confirm Dialog for Deletion */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+      />
     </div>
   );
 };

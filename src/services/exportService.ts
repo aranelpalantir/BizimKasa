@@ -95,4 +95,5 @@ export async function importDatabaseFromJSON(file: File): Promise<{ success: boo
 
 export async function resetToSampleData(): Promise<void> {
   await forceResetWithDummyData();
+  await db.settings.put({ key: 'dummyDataVersion', value: 3 });
 }

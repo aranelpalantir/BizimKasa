@@ -77,39 +77,39 @@ async function seedDummyData(): Promise<void> {
   // 2. Hesaplar & Kategoriler
   const accounts: Account[] = [
     // --- MERT ---
-    { id: 'acc-m-kart1', groupId: 'group-mert', name: 'Garanti Bonus Kart', type: 'EXPENSE', subType: 'CREDIT_CARD', bankName: 'Garanti BBVA', currency: 'TRY', order: 1, createdAt: '2025-01-01' },
-    { id: 'acc-m-kart2', groupId: 'group-mert', name: 'İş Maximum Kart', type: 'EXPENSE', subType: 'CREDIT_CARD', bankName: 'İş Bankası', currency: 'TRY', order: 2, createdAt: '2025-01-01' },
+    { id: 'acc-m-kart1', groupId: 'group-mert', name: 'Bonus Kredi Kartı', type: 'EXPENSE', subType: 'CREDIT_CARD', bankName: 'Garanti BBVA', currency: 'TRY', order: 1, createdAt: '2025-01-01' },
+    { id: 'acc-m-kart2', groupId: 'group-mert', name: 'Maximum Kredi Kartı', type: 'EXPENSE', subType: 'CREDIT_CARD', bankName: 'İş Bankası', currency: 'TRY', order: 2, createdAt: '2025-01-01' },
     { id: 'acc-m-aidat', groupId: 'group-mert', name: 'Site Aidatı', type: 'EXPENSE', subType: 'EXPENSE_FIXED', currency: 'TRY', order: 3, createdAt: '2025-01-01' },
     { id: 'acc-m-faturalar', groupId: 'group-mert', name: 'Ev Faturaları', type: 'EXPENSE', subType: 'EXPENSE_BILLS', currency: 'TRY', order: 4, createdAt: '2025-01-01' },
-    { id: 'acc-m-maas', groupId: 'group-mert', name: 'Mert Maaş', type: 'INCOME', subType: 'INCOME_SALARY', currency: 'TRY', order: 5, createdAt: '2025-01-01' },
+    { id: 'acc-m-maas', groupId: 'group-mert', name: 'Maaş Geliri', type: 'INCOME', subType: 'INCOME_SALARY', currency: 'TRY', order: 5, createdAt: '2025-01-01' },
     { id: 'acc-m-prim', groupId: 'group-mert', name: 'Prim & İkramiye', type: 'INCOME', subType: 'INCOME_BONUS', currency: 'TRY', order: 6, createdAt: '2025-01-01' },
     // Mert Varlıkları
-    { id: 'acc-m-altin-banka', groupId: 'group-mert', name: 'Banka Gram Altın (Garanti)', type: 'ASSET', subType: 'GOLD_GRAM_BANK', symbol: 'XAU_GR_BANK', currency: 'TRY', order: 7, createdAt: '2025-01-01' },
+    { id: 'acc-m-altin-banka', groupId: 'group-mert', name: 'Banka Gram Altın', type: 'ASSET', subType: 'GOLD_GRAM_BANK', symbol: 'XAU_GR_BANK', currency: 'TRY', order: 7, createdAt: '2025-01-01' },
     { id: 'acc-m-fon-ti2', groupId: 'group-mert', name: 'TI2 - İş Portföy Fonu', type: 'ASSET', subType: 'FUND', symbol: 'TI2', currency: 'TRY', order: 8, createdAt: '2025-01-01' },
 
     // --- AYLIN ---
-    { id: 'acc-a-kart1', groupId: 'group-aylin', name: 'Worldcard', type: 'EXPENSE', subType: 'CREDIT_CARD', bankName: 'Yapı Kredi', currency: 'TRY', order: 1, createdAt: '2025-01-01' },
-    { id: 'acc-a-kart2', groupId: 'group-aylin', name: 'Ziraat Bankkart', type: 'EXPENSE', subType: 'CREDIT_CARD', bankName: 'Ziraat', currency: 'TRY', order: 2, createdAt: '2025-01-01' },
+    { id: 'acc-a-kart1', groupId: 'group-aylin', name: 'World Kredi Kartı', type: 'EXPENSE', subType: 'CREDIT_CARD', bankName: 'Yapı Kredi', currency: 'TRY', order: 1, createdAt: '2025-01-01' },
+    { id: 'acc-a-kart2', groupId: 'group-aylin', name: 'Bankkart Kredi Kartı', type: 'EXPENSE', subType: 'CREDIT_CARD', bankName: 'Ziraat', currency: 'TRY', order: 2, createdAt: '2025-01-01' },
     { id: 'acc-a-diger', groupId: 'group-aylin', name: 'Kişisel Harcamalar', type: 'EXPENSE', subType: 'EXPENSE_OTHER', currency: 'TRY', order: 3, createdAt: '2025-01-01' },
-    { id: 'acc-a-maas', groupId: 'group-aylin', name: 'Aylin Maaş', type: 'INCOME', subType: 'INCOME_SALARY', currency: 'TRY', order: 4, createdAt: '2025-01-01' },
+    { id: 'acc-a-maas', groupId: 'group-aylin', name: 'Maaş Geliri', type: 'INCOME', subType: 'INCOME_SALARY', currency: 'TRY', order: 4, createdAt: '2025-01-01' },
     // Aylin Varlıkları
     { id: 'acc-a-altin-fiziki', groupId: 'group-aylin', name: 'Fiziki Gram Altın', type: 'ASSET', subType: 'GOLD_GRAM_PHYSICAL', symbol: 'XAU_GR_PHYSICAL', currency: 'TRY', order: 5, createdAt: '2025-01-01' },
     { id: 'acc-a-fon-mac', groupId: 'group-aylin', name: 'MAC - Marmara Capital', type: 'ASSET', subType: 'FUND', symbol: 'MAC', currency: 'TRY', order: 6, createdAt: '2025-01-01' },
-    { id: 'acc-a-euro', groupId: 'group-aylin', name: 'Euro Birikim', type: 'ASSET', subType: 'CURRENCY', symbol: 'EUR', currency: 'EUR', order: 7, createdAt: '2025-01-01' },
+    { id: 'acc-a-euro', groupId: 'group-aylin', name: 'Euro (EUR)', type: 'ASSET', subType: 'CURRENCY', symbol: 'EUR', currency: 'EUR', order: 7, createdAt: '2025-01-01' },
 
     // --- ÇOCUK ---
-    { id: 'acc-c-okul', groupId: 'group-cocuk', name: 'Okul / Kreş Taksiti', type: 'EXPENSE', subType: 'EXPENSE_FIXED', currency: 'TRY', order: 1, createdAt: '2025-01-01' },
-    { id: 'acc-c-kurs', groupId: 'group-cocuk', name: 'Gelişim & Spor Kursu', type: 'EXPENSE', subType: 'EXPENSE_OTHER', currency: 'TRY', order: 2, createdAt: '2025-01-01' },
-    { id: 'acc-c-harclik', groupId: 'group-cocuk', name: 'Büyüklerden Harçlık', type: 'INCOME', subType: 'INCOME_OTHER', currency: 'TRY', order: 3, createdAt: '2025-01-01' },
+    { id: 'acc-c-okul', groupId: 'group-cocuk', name: 'Okul / Kreş', type: 'EXPENSE', subType: 'EXPENSE_FIXED', currency: 'TRY', order: 1, createdAt: '2025-01-01' },
+    { id: 'acc-c-kurs', groupId: 'group-cocuk', name: 'Kurs & Spor', type: 'EXPENSE', subType: 'EXPENSE_OTHER', currency: 'TRY', order: 2, createdAt: '2025-01-01' },
+    { id: 'acc-c-harclik', groupId: 'group-cocuk', name: 'Harçlık & Destek', type: 'INCOME', subType: 'INCOME_OTHER', currency: 'TRY', order: 3, createdAt: '2025-01-01' },
     // Çocuk Varlıkları
-    { id: 'acc-c-ceyrek', groupId: 'group-cocuk', name: 'Fiziki Çeyrek Altın Birikimi', type: 'ASSET', subType: 'GOLD_CEYREK', symbol: 'XAU_CEYREK', currency: 'TRY', order: 4, createdAt: '2025-01-01' },
+    { id: 'acc-c-ceyrek', groupId: 'group-cocuk', name: 'Çeyrek Altın', type: 'ASSET', subType: 'GOLD_CEYREK', symbol: 'XAU_CEYREK', currency: 'TRY', order: 4, createdAt: '2025-01-01' },
     { id: 'acc-c-fon-aft', groupId: 'group-cocuk', name: 'AFT - Yeni Teknolojiler', type: 'ASSET', subType: 'FUND', symbol: 'AFT', currency: 'TRY', order: 5, createdAt: '2025-01-01' },
 
     // --- ORTAK KASA ---
-    { id: 'acc-o-market', groupId: 'group-ortak', name: 'Ev Market & Mutfak', type: 'EXPENSE', subType: 'EXPENSE_OTHER', currency: 'TRY', order: 1, createdAt: '2025-01-01' },
+    { id: 'acc-o-market', groupId: 'group-ortak', name: 'Market & Mutfak', type: 'EXPENSE', subType: 'EXPENSE_OTHER', currency: 'TRY', order: 1, createdAt: '2025-01-01' },
     { id: 'acc-o-kira-gelir', groupId: 'group-ortak', name: 'Kira Geliri', type: 'INCOME', subType: 'INCOME_RENT', currency: 'TRY', order: 2, createdAt: '2025-01-01' },
     // Ortak Varlıklar
-    { id: 'acc-o-dolar', groupId: 'group-ortak', name: 'Dolar Birikimi', type: 'ASSET', subType: 'CURRENCY', symbol: 'USD', currency: 'USD', order: 3, createdAt: '2025-01-01' },
+    { id: 'acc-o-dolar', groupId: 'group-ortak', name: 'Dolar (USD)', type: 'ASSET', subType: 'CURRENCY', symbol: 'USD', currency: 'USD', order: 3, createdAt: '2025-01-01' },
   ];
   await db.accounts.bulkAdd(accounts);
 

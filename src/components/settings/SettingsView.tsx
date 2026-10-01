@@ -13,6 +13,7 @@ import {
   FileJson
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { hashPin, registerBiometrics, updateSettings } from '../../services/securityService';
 import { exportDatabaseToJSON, importDatabaseFromJSON, resetToSampleData } from '../../services/exportService';
 import type { AppSettings } from '../../types/finance';
@@ -32,6 +33,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
+
+  // Confirm dialog state
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -59,12 +75,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     showFeedback('success', 'PIN kodu başarıyla kaydedildi!');
   };
 
-  const handleRemovePin = async () => {
-    if (window.confirm('PIN korumasını kaldırmak istediğinize emin misiniz?')) {
-      await updateSettings({ pinHash: undefined, biometricsEnabled: false });
-      onRefreshSettings();
-      showFeedback('success', 'PIN koruması kaldırıldı.');
-    }
+  const handleRemovePin = () => {
+    setConfirmState({
+      isOpen: true,
+      title: 'PIN Korumasını Kaldır',
+      message: 'Uygulama PIN koruması ve biyometrik kilit devre dışı bırakılacaktır. Onaylıyor musunuz?',
+      confirmText: 'Kaldır',
+      isDestructive: true,
+      onConfirm: async () => {
+        await updateSettings({ pinHash: undefined, biometricsEnabled: false });
+        onRefreshSettings();
+        showFeedback('success', 'PIN koruması kaldırıldı.');
+      }
+    });
   };
 
   const handleToggleBiometrics = async () => {
@@ -98,28 +121,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (window.confirm('Mevcut veriler silinip seçtiğiniz yedek yüklenecek. Onaylıyor musunuz?')) {
-      const res = await importDatabaseFromJSON(file);
-      if (res.success) {
-        showFeedback('success', res.message);
-        setTimeout(() => window.location.reload(), 1000);
-      } else {
-        showFeedback('error', res.message);
+    setConfirmState({
+      isOpen: true,
+      title: 'Yedekten Geri Yükle',
+      message: 'Mevcut tüm veriler silinecek ve seçtiğiniz yedek dosyası yüklenecektir. Bu işlemi onaylıyor musunuz?',
+      confirmText: 'Yedeği Yükle',
+      isDestructive: true,
+      onConfirm: async () => {
+        const res = await importDatabaseFromJSON(file);
+        if (res.success) {
+          showFeedback('success', res.message);
+          setTimeout(() => window.location.reload(), 800);
+        } else {
+          showFeedback('error', res.message);
+        }
       }
-    }
+    });
     e.target.value = '';
   };
 
-  const handleResetSample = async () => {
-    if (window.confirm('Tüm veriler sıfırlanıp Google Sheets başlangıç verileri yeniden yüklenecektir. Emin misiniz?')) {
-      await resetToSampleData();
-      showFeedback('success', 'Başlangıç verileri başarıyla geri yüklendi.');
-      setTimeout(() => window.location.reload(), 800);
-    }
+  const handleResetSample = () => {
+    setConfirmState({
+      isOpen: true,
+      title: 'Örnek Verileri Yükle',
+      message: 'Mevcut tüm veriler sıfırlanıp zengin ve gerçekçi örnek başlangıç verileri yeniden yüklenecektir. Bu işlemi onaylıyor musunuz?',
+      confirmText: 'Örnek Verileri Yükle',
+      isDestructive: true,
+      onConfirm: async () => {
+        await resetToSampleData();
+        showFeedback('success', 'Örnek veriler başarıyla yüklendi.');
+        setTimeout(() => window.location.reload(), 800);
+      }
+    });
   };
 
   return (
@@ -290,11 +327,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </label>
         </div>
 
-        {/* Reset to Google Sheet Sample Data */}
+        {/* Reset to Sample Data */}
         <div className="pt-2 border-t border-white/5 flex items-center justify-between">
           <div>
             <span className="text-xs font-medium text-slate-300 block">Örnek Verileri Yeniden Yükle</span>
-            <span className="text-[11px] text-slate-500">Google Sheets tablolarındaki ilk şablonu geri getirir</span>
+            <span className="text-[11px] text-slate-500">Sistemi zengin ve gerçekçi örnek verilerle baştan başlatır</span>
           </div>
 
           <button
@@ -302,7 +339,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-white/5 transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Şablonu Geri Yükle</span>
+            <span>Örnek Verileri Yükle</span>
           </button>
         </div>
       </div>
@@ -314,7 +351,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span>%100 Local-First Gizlilik Güvencesi</span>
         </div>
         <p>
-          BizimKasa uygulamasındaki tüm bütçe, altın, döviz ve fon verileriniz yalnızca bu cihazın yerel tarayıcı veritabanında (IndexedDB) tutulur. Hiçbir sunucuya gönderilmez ve üçüncü taraflarla paylaşılmaz.
+          Bizim Kasa uygulamasındaki tüm bütçe, altın, döviz ve fon verileriniz yalnızca bu cihazın yerel tarayıcı veritabanında (IndexedDB) tutulur. Hiçbir harici sunucuya aktarılmaz ve gizliliğiniz tamamen size aittir.
         </p>
       </div>
 
@@ -382,6 +419,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmState.isOpen}
+        onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmState.onConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        isDestructive={confirmState.isDestructive}
+      />
     </div>
   );
 };

@@ -27,12 +27,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold tracking-tight text-lg text-white">BizimKasa</span>
+              <span className="font-bold tracking-tight text-lg text-white">Bizim Kasa</span>
               <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 PWA Local
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 -mt-0.5">Aile & Bütçe Yönetimi</p>
+            <p className="text-[11px] text-slate-400 -mt-0.5">Ortak Bütçe & Varlık Portföyü</p>
           </div>
         </div>
 

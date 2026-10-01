@@ -40,11 +40,11 @@ export const App: React.FC = () => {
 
   // Load Settings and Seed
   const loadSettingsAndInit = async () => {
-    // Check if dummy data v2 is seeded
+    // Check if dummy data v3 is seeded
     const dummyVerRecord = await db.settings.get('dummyDataVersion');
-    if (!dummyVerRecord || dummyVerRecord.value < 2) {
+    if (!dummyVerRecord || dummyVerRecord.value < 3) {
       await forceResetWithDummyData();
-      await db.settings.put({ key: 'dummyDataVersion', value: 2 });
+      await db.settings.put({ key: 'dummyDataVersion', value: 3 });
     } else {
       await seedInitialDataIfNeeded();
     }
@@ -120,7 +120,7 @@ export const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#080c14] flex flex-col items-center justify-center text-slate-400 gap-3">
         <div className="w-10 h-10 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs font-semibold text-slate-300">BizimKasa Yükleniyor...</span>
+        <span className="text-xs font-semibold text-slate-300">Bizim Kasa Yükleniyor...</span>
       </div>
     );
   }
@@ -176,6 +176,7 @@ export const App: React.FC = () => {
 
         {activeTab === 'plan' && (
           <InvestmentPlanner
+            groups={groups}
             accounts={accounts}
             plans={investmentPlans}
             hideValues={settings.hideValuesOnScreen}

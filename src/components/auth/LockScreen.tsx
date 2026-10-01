@@ -76,7 +76,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ settings, onUnlock }) =>
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-xl shadow-amber-500/20 mb-4">
           <Shield className="w-8 h-8 text-slate-950 stroke-[2.5]" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">BizimKasa</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-white">Bizim Kasa</h1>
         <p className="text-sm text-slate-400 mt-1">Lütfen devam etmek için kilidi açın</p>
       </div>
 

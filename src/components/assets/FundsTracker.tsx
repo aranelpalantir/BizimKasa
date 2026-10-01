@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, ArrowUpRight, Trash2, Filter, History, Sparkles } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownRight, Trash2, Filter, History, PieChart, TrendingUp, DollarSign } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -10,6 +10,7 @@ import {
   Cell 
 } from 'recharts';
 import { Modal } from '../common/Modal';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GroupFilterBar } from '../common/GroupFilterBar';
 import { db } from '../../db/db';
 import { formatTRY, formatNumber } from '../../services/portfolioService';
@@ -38,6 +39,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Form State
+  const [txType, setTxType] = useState<'BUY' | 'SELL'>('BUY');
   const [targetGroupId, setTargetGroupId] = useState<string>(groups[0]?.id || '');
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [newFundCode, setNewFundCode] = useState('');
@@ -50,6 +52,19 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
   const [note, setNote] = useState('');
   const [fundSuggestions, setFundSuggestions] = useState<Array<{ code: string; name: string }>>([]);
 
+  // Confirm delete dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
   // Filter fund accounts by group
   const matchingFundAccounts = accounts.filter(a => {
     const isFund = a.subType === 'FUND' || a.subType === 'STOCK';
@@ -58,6 +73,14 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
   });
 
   const matchingAccountIds = new Set(matchingFundAccounts.map(a => a.id));
+
+  // Filter groups: only show groups that have fund accounts with transactions
+  const groupsWithFunds = groups.filter(g => {
+    const gAccounts = accounts.filter(a => a.groupId === g.id && (a.subType === 'FUND' || a.subType === 'STOCK'));
+    if (gAccounts.length === 0) return false;
+    const gAccIds = new Set(gAccounts.map(a => a.id));
+    return transactions.some(t => gAccIds.has(t.accountId));
+  });
 
   // Rate lookup map
   const rateMap = new Map<string, number>();
@@ -201,10 +224,34 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     }
   };
 
+  const handleOpenModal = () => {
+    const targetGrp = selectedGroupId !== 'ALL' ? selectedGroupId : (groups[0]?.id || '');
+    setTargetGroupId(targetGrp);
+    setTxType('BUY');
+
+    const groupFunds = accounts.filter(a => a.groupId === targetGrp && (a.subType === 'FUND' || a.subType === 'STOCK'));
+    if (groupFunds.length > 0) {
+      setSelectedAccountId(groupFunds[0].id);
+      setIsCreatingNewFund(false);
+      const sym = groupFunds[0].symbol || groupFunds[0].name;
+      const rate = rateMap.get(sym);
+      if (rate) setUnitPrice(rate.toString());
+    } else {
+      setIsCreatingNewFund(true);
+      setSelectedAccountId('');
+      setUnitPrice('');
+    }
+
+    setQuantity('');
+    setTotalTRY('');
+    setNote('');
+    setIsModalOpen(true);
+  };
+
   const handleSaveTransaction = async () => {
     let targetAccId = selectedAccountId;
 
-    if (isCreatingNewFund) {
+    if (txType === 'BUY' && isCreatingNewFund) {
       if (!newFundCode.trim()) return;
       const code = newFundCode.trim().toUpperCase();
       const newAcc: Account = {
@@ -252,7 +299,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       date: txDate,
       year: dateObj.getFullYear(),
       month: dateObj.getMonth() + 1,
-      type: 'BUY',
+      type: txType,
       quantity: q,
       totalAmountTRY: t,
       unitPriceTRY: u,
@@ -270,17 +317,36 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     setFundSuggestions([]);
   };
 
-  const handleDeleteFund = async (accId: string) => {
-    if (window.confirm('Bu fonu ve geçmiş tüm alımlarını silmek istediğinize emin misiniz?')) {
-      await db.accounts.delete(accId);
-      const txs = transactions.filter(t => t.accountId === accId);
-      for (const t of txs) {
-        await db.transactions.delete(t.id);
+  const handleDeleteFund = (acc: Account) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Fonu Sil',
+      message: `"${acc.name}" (${acc.symbol}) fonunu ve buna ait geçmiş tüm alım/satım işlemlerini silmek istediğinize emin misiniz?`,
+      onConfirm: async () => {
+        await db.accounts.delete(acc.id);
+        const txs = transactions.filter(t => t.accountId === acc.id);
+        for (const t of txs) {
+          await db.transactions.delete(t.id);
+        }
       }
-    }
+    });
+  };
+
+  const handleDeleteTx = (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'İşlemi Sil',
+      message: 'Bu fon alım/satım hareket kaydını silmek istediğinize emin misiniz?',
+      onConfirm: async () => {
+        await db.transactions.delete(id);
+      }
+    });
   };
 
   const chartColors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4'];
+
+  // Current holding for selected sell account
+  const sellAccountData = fundData.find(f => f.account.id === selectedAccountId);
 
   return (
     <div className="space-y-4">
@@ -294,26 +360,22 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             </span>
           </h3>
           <p className="text-xs text-slate-400">
-            TEFAS yatırım fonları kâr/zarar oranları ve portföy ağırlıkları
+            TEFAS yatırım fonları portföy ağırlıkları, maliyet ve kâr/zarar oranları
           </p>
         </div>
 
         <button
-          onClick={() => {
-            if (matchingFundAccounts.length > 0) setSelectedAccountId(matchingFundAccounts[0].id);
-            else setIsCreatingNewFund(true);
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-colors shadow-lg shadow-amber-500/20"
+          onClick={handleOpenModal}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-colors shadow-lg shadow-amber-500/20 active:scale-95"
         >
           <Plus className="w-4 h-4" />
-          <span>Fon Alımı Ekle</span>
+          <span>Fon Al / Bozdur</span>
         </button>
       </div>
 
-      {/* Group Filter Bar */}
+      {/* Group Filter Bar: Only show groups that have funds */}
       <GroupFilterBar
-        groups={groups}
+        groups={groupsWithFunds.length > 0 ? groupsWithFunds : groups}
         selectedGroupId={selectedGroupId}
         onSelectGroup={setSelectedGroupId}
         title="Hesap Grubu"
@@ -348,12 +410,121 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
         <div className="flex flex-col border-t sm:border-t-0 sm:border-l border-white/10 pt-2 sm:pt-0 sm:pl-2.5">
           <span className="text-[11px] font-semibold text-emerald-400 uppercase">Kâr Oranı</span>
           <div className={`flex items-center gap-1 text-lg sm:text-xl font-extrabold mt-1 font-mono ${totalFundsProfitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            <ArrowUpRight className="w-5 h-5" />
+            {totalFundsProfitLoss >= 0 ? <ArrowUpRight className="w-5 h-5" /> : <ArrowDownRight className="w-5 h-5" />}
             <span>%{formatNumber(totalFundsProfitPct, 2)}</span>
           </div>
           <span className="text-[10px] text-slate-500">Yüzdesel Getiri</span>
         </div>
       </div>
+
+      {/* 4 DISTINCT CHARTS (PORTFÖY ORANI, MALİYET, DEĞER, KÂR/ZARAR) */}
+      {fundData.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Chart 1: Portföye Oranı (%) */}
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/5 space-y-2 shadow-md">
+            <div className="flex items-center justify-between pb-1 border-b border-white/5">
+              <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <PieChart className="w-3.5 h-3.5 text-blue-400" />
+                <span>1. Portföye Oranı (%)</span>
+              </span>
+              <span className="text-[10px] text-slate-400">Yüzdesel Dağılım</span>
+            </div>
+            <div className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={fundData}>
+                  <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
+                  <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `%${v}`} />
+                  <Tooltip
+                    formatter={(val: any) => [`%${formatNumber(Number(val) || 0, 2)}`, 'Portföy Oranı']}
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                  />
+                  <Bar dataKey="ratioPct" radius={[6, 6, 0, 0]}>
+                    {fundData.map((_, i) => (
+                      <Cell key={i} fill={chartColors[i % chartColors.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Chart 2: Toplam Maliyet (TL) */}
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/5 space-y-2 shadow-md">
+            <div className="flex items-center justify-between pb-1 border-b border-white/5">
+              <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+                <span>2. Toplam Maliyet (TL)</span>
+              </span>
+              <span className="text-[10px] text-slate-400">Ödenen Anapara</span>
+            </div>
+            <div className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={fundData}>
+                  <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
+                  <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip
+                    formatter={(val: any) => [formatTRY(Number(val) || 0, hideValues), 'Maliyet']}
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                  />
+                  <Bar dataKey="costTRY" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Chart 3: Güncel Değer (TL) */}
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/5 space-y-2 shadow-md">
+            <div className="flex items-center justify-between pb-1 border-b border-white/5">
+              <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+                <span>3. Güncel Değer (TL)</span>
+              </span>
+              <span className="text-[10px] text-slate-400">Piyasa Değeri</span>
+            </div>
+            <div className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={fundData}>
+                  <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
+                  <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip
+                    formatter={(val: any) => [formatTRY(Number(val) || 0, hideValues), 'Güncel Değer']}
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                  />
+                  <Bar dataKey="valueTRY" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Chart 4: Kâr / Zarar (TL) */}
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/5 space-y-2 shadow-md">
+            <div className="flex items-center justify-between pb-1 border-b border-white/5">
+              <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                <span>4. Net Kâr / Zarar (TL)</span>
+              </span>
+              <span className="text-[10px] text-slate-400">Kâr/Zarar Karşılaştırması</span>
+            </div>
+            <div className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={fundData}>
+                  <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
+                  <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip
+                    formatter={(val: any) => [formatTRY(Number(val) || 0, hideValues), 'Kâr / Zarar']}
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                  />
+                  <Bar dataKey="profitLossTRY" radius={[6, 6, 0, 0]}>
+                    {fundData.map((entry, i) => (
+                      <Cell key={i} fill={entry.profitLossTRY >= 0 ? '#10b981' : '#f43f5e'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* DETAILED FUNDS TABLE */}
       <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl">
@@ -362,6 +533,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             <tr className="bg-slate-950/80 border-b border-white/10 text-slate-400 font-semibold">
               <th className="py-3 px-4 min-w-[150px]">Fon Adı / Kodu</th>
               <th className="py-3 px-2.5 text-left">Grup</th>
+              <th className="py-3 px-3 text-right">Adet</th>
               <th className="py-3 px-3 text-right">Portföy Oranı</th>
               <th className="py-3 px-3 text-right">Maliyet (TL)</th>
               <th className="py-3 px-3 text-right">Değer (TL)</th>
@@ -373,7 +545,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
           <tbody className="divide-y divide-white/5 font-mono">
             {fundData.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-6 text-center text-slate-400 font-sans text-xs">
+                <td colSpan={9} className="py-6 text-center text-slate-400 font-sans text-xs">
                   Bu grupta kayıtlı fon bulunmuyor.
                 </td>
               </tr>
@@ -398,6 +570,9 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                       </span>
                     )}
                   </td>
+                  <td className="py-3 px-3 text-right text-slate-300">
+                    {formatNumber(f.netQty, 0, hideValues)}
+                  </td>
                   <td className="py-3 px-3 text-right font-bold text-slate-300">
                     %{formatNumber(f.ratioPct, 2)}
                   </td>
@@ -415,7 +590,8 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                   </td>
                   <td className="py-3 px-2 text-center">
                     <button
-                      onClick={() => handleDeleteFund(f.account.id)}
+                      onClick={() => handleDeleteFund(f.account)}
+                      title="Fonu ve tüm işlemlerini sil"
                       className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -428,55 +604,12 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
         </table>
       </div>
 
-      {/* CHARTS */}
-      {fundData.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/5 space-y-3">
-            <span className="text-xs font-bold text-slate-300">Fon Güncel Değerleri (TL)</span>
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fundData}>
-                  <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
-                  <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    formatter={(val: any) => [formatTRY(Number(val) || 0, hideValues), 'Değer']}
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
-                  />
-                  <Bar dataKey="valueTRY" radius={[6, 6, 0, 0]}>
-                    {fundData.map((_, i) => (
-                      <Cell key={i} fill={chartColors[i % chartColors.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/5 space-y-3">
-            <span className="text-xs font-bold text-slate-300">Kâr / Zarar (TL) Karşılaştırması</span>
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fundData}>
-                  <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
-                  <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    formatter={(val: any) => [formatTRY(Number(val) || 0, hideValues), 'Kâr']}
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
-                  />
-                  <Bar dataKey="profitLossTRY" fill="#10b981" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* TRANSACTION HISTORY WITH DATE FILTERS */}
       <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
             <History className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Fon Alış & Hareket Geçmişi</span>
+            <span>Fon Alış & Satış Hareket Geçmişi</span>
           </h4>
 
           {/* Date Filter Chips */}
@@ -495,7 +628,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                 onClick={() => setHistoryFilter(f.id)}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors flex-shrink-0 ${
                   historyFilter === f.id
-                    ? 'bg-amber-500 text-slate-950 font-bold'
+                    ? 'bg-emerald-500 text-slate-950 font-bold'
                     : 'bg-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
@@ -506,7 +639,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
         </div>
 
         {filteredTxs.length === 0 ? (
-          <p className="text-xs text-slate-400 py-3 text-center">Bu filtreye uygun fon işlemi bulunamadı.</p>
+          <p className="text-xs text-slate-400 py-3 text-center">Bu filtreye uygun işlem kaydı bulunamadı.</p>
         ) : (
           <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
             {filteredTxs.map((tx) => {
@@ -519,13 +652,18 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                   className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/50 border border-white/5 text-xs"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-emerald-500/15 text-emerald-400 font-mono">
-                      {acc?.symbol || 'FON'}
+                    <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                      tx.type === 'BUY' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
+                    }`}>
+                      {tx.type === 'BUY' ? 'ALIŞ' : 'SATIŞ'}
                     </span>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-slate-200 font-medium">
-                          {formatNumber(tx.quantity, 0, hideValues)} Adet
+                        <span className="font-semibold text-slate-200">
+                          {acc?.symbol || acc?.name}
+                        </span>
+                        <span className="text-slate-400 text-[11px]">
+                          • {formatNumber(tx.quantity, 0, hideValues)} adet
                         </span>
                         {grp && (
                           <span
@@ -550,8 +688,9 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                       <span className="text-[10px] text-slate-500">{tx.date}</span>
                     </div>
                     <button
-                      onClick={() => db.transactions.delete(tx.id)}
+                      onClick={() => handleDeleteTx(tx.id)}
                       className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
+                      title="İşlemi Sil"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -563,19 +702,67 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
         )}
       </div>
 
-      {/* ADD TRANSACTION MODAL WITH TEFAS AUTO-COMPLETE */}
+      {/* TRANSACTION MODAL WITH BUY / SELL SUPPORT */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Yatırım Fonu Alımı Ekle"
+        onClose={() => {
+          setIsModalOpen(false);
+          setIsCreatingNewFund(false);
+          setFundSuggestions([]);
+        }}
+        title="Fon Alım / Satım (Bozdurma)"
       >
         <div className="space-y-4">
+          {/* BUY / SELL Switcher */}
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-950 border border-white/10">
+            <button
+              type="button"
+              onClick={() => setTxType('BUY')}
+              className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                txType === 'BUY' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'
+              }`}
+            >
+              Fon Alışı (+)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTxType('SELL');
+                setIsCreatingNewFund(false);
+                // Preselect first account that has net holdings
+                const availableToSell = fundData.filter(f => f.account.groupId === targetGroupId && f.netQty > 0);
+                if (availableToSell.length > 0) {
+                  setSelectedAccountId(availableToSell[0].account.id);
+                  setUnitPrice(availableToSell[0].currentRate.toString());
+                }
+              }}
+              className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                txType === 'SELL' ? 'bg-rose-500 text-white' : 'text-slate-400'
+              }`}
+            >
+              Fon Satışı / Bozdurma (-)
+            </button>
+          </div>
+
+          {/* Group Selection */}
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Hangi Gruba Ait?</label>
             <select
               value={targetGroupId}
-              onChange={(e) => setTargetGroupId(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+              onChange={(e) => {
+                const gid = e.target.value;
+                setTargetGroupId(gid);
+                const gFunds = accounts.filter(a => a.groupId === gid && (a.subType === 'FUND' || a.subType === 'STOCK'));
+                if (gFunds.length > 0) {
+                  setSelectedAccountId(gFunds[0].id);
+                  const rate = rateMap.get(gFunds[0].symbol || gFunds[0].name);
+                  if (rate) setUnitPrice(rate.toString());
+                } else {
+                  setSelectedAccountId('');
+                  setIsCreatingNewFund(true);
+                }
+              }}
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
             >
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>{g.name}</option>
@@ -583,81 +770,124 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             </select>
           </div>
 
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-slate-400">Yatırım Fonu</label>
-            <button
-              type="button"
-              onClick={() => setIsCreatingNewFund(!isCreatingNewFund)}
-              className="text-xs text-amber-400 font-semibold hover:underline"
-            >
-              {isCreatingNewFund ? 'Mevcut Fonlardan Seç' : '+ Yeni Fon Kodu Ekle'}
-            </button>
-          </div>
-
-          {isCreatingNewFund ? (
-            <div className="space-y-2 relative">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <label className="block text-xs text-slate-400 mb-1">
-                    Fon Kodu (TEFAS)
-                  </label>
-                  <input
-                    type="text"
-                    value={newFundCode}
-                    onChange={(e) => handleFundCodeChange(e.target.value)}
-                    placeholder="Örn: MAC, TI2, AFT..."
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono uppercase text-sm focus:outline-none focus:border-amber-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Fon Adı</label>
-                  <input
-                    type="text"
-                    value={newFundName}
-                    onChange={(e) => setNewFundName(e.target.value)}
-                    placeholder="Otomatik gelir veya yazın"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
-                  />
-                </div>
+          {/* If BUY: can select existing or create new fund */}
+          {txType === 'BUY' && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-slate-400">Yatırım Fonu Seçimi</label>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingNewFund(!isCreatingNewFund)}
+                  className="text-xs text-amber-400 hover:text-amber-300 font-semibold"
+                >
+                  {isCreatingNewFund ? 'Mevcut Fonlardan Seç' : '+ Yeni Fon Kodu Ekle'}
+                </button>
               </div>
 
-              {/* TEFAS Autocomplete Suggestions Dropdown */}
-              {fundSuggestions.length > 0 && (
-                <div className="absolute top-16 left-0 right-0 z-50 rounded-xl bg-slate-900 border border-amber-500/30 shadow-2xl p-1.5 space-y-1">
-                  <span className="text-[10px] text-amber-400 font-semibold px-2 block flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    <span>Önerilen TEFAS Fonları:</span>
-                  </span>
-                  {fundSuggestions.map((s) => (
-                    <div
-                      key={s.code}
-                      onClick={() => handleSelectSuggestion(s.code, s.name)}
-                      className="px-2.5 py-1.5 rounded-lg hover:bg-white/10 cursor-pointer flex items-center justify-between text-xs"
-                    >
-                      <span className="font-mono font-bold text-amber-400">{s.code}</span>
-                      <span className="text-slate-300 truncate max-w-[220px] text-[11px]">{s.name}</span>
-                    </div>
+              {!isCreatingNewFund ? (
+                <select
+                  value={selectedAccountId}
+                  onChange={(e) => {
+                    const accId = e.target.value;
+                    setSelectedAccountId(accId);
+                    const acc = accounts.find(a => a.id === accId);
+                    if (acc) {
+                      const sym = acc.symbol || acc.name;
+                      const rate = rateMap.get(sym);
+                      if (rate) setUnitPrice(rate.toString());
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+                >
+                  {matchingFundAccounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.symbol ? `[${acc.symbol}] ` : ''}{acc.name}
+                    </option>
                   ))}
+                </select>
+              ) : (
+                <div className="space-y-3 p-3 rounded-xl bg-slate-950/60 border border-amber-500/20">
+                  <div className="relative">
+                    <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                      TEFAS Fon Kodu (örn: MAC, TI2, AFT, TI1)
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={newFundCode}
+                      onChange={(e) => handleFundCodeChange(e.target.value)}
+                      placeholder="Fon Kodunu Yazın..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white font-mono uppercase font-bold text-sm focus:outline-none focus:border-amber-400"
+                    />
+
+                    {/* Autocomplete suggestions */}
+                    {fundSuggestions.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden max-h-40 overflow-y-auto divide-y divide-white/5">
+                        {fundSuggestions.map((s) => (
+                          <div
+                            key={s.code}
+                            onClick={() => handleSelectSuggestion(s.code, s.name)}
+                            className="p-2 hover:bg-slate-800 cursor-pointer flex items-center justify-between text-xs"
+                          >
+                            <span className="font-bold text-amber-400 font-mono">{s.code}</span>
+                            <span className="text-slate-300 text-[11px] truncate max-w-[200px]">{s.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-400 mb-1">Fon Adı</label>
+                    <input
+                      type="text"
+                      value={newFundName}
+                      onChange={(e) => setNewFundName(e.target.value)}
+                      placeholder="Fon adı otomatik gelir ya da elle yazabilirsiniz"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-xs focus:outline-none"
+                    />
+                  </div>
                 </div>
               )}
             </div>
-          ) : (
-            <select
-              value={selectedAccountId}
-              onChange={(e) => setSelectedAccountId(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none"
-            >
-              {matchingFundAccounts.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.symbol} — {f.name}
-                </option>
-              ))}
-            </select>
+          )}
+
+          {/* If SELL: only existing funds with holdings */}
+          {txType === 'SELL' && (
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Satılacak Fon</label>
+              <select
+                value={selectedAccountId}
+                onChange={(e) => {
+                  const accId = e.target.value;
+                  setSelectedAccountId(accId);
+                  const fItem = fundData.find(f => f.account.id === accId);
+                  if (fItem) setUnitPrice(fItem.currentRate.toString());
+                }}
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+              >
+                {matchingFundAccounts.map((acc) => {
+                  const fItem = fundData.find(f => f.account.id === acc.id);
+                  return (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.symbol ? `[${acc.symbol}] ` : ''}{acc.name} (Eldeki: {formatNumber(fItem?.netQty || 0, 0)} adet)
+                    </option>
+                  );
+                })}
+              </select>
+              {sellAccountData && (
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Mevcut Bakiye: <span className="font-bold text-white font-mono">{formatNumber(sellAccountData.netQty, 0)} adet</span> (≈ {formatTRY(sellAccountData.valueTRY, hideValues)})
+                </p>
+              )}
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Adet / Pay</label>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                {txType === 'BUY' ? 'Alınan Adet' : 'Satılan Adet'}
+              </label>
               <input
                 type="text"
                 value={quantity}
@@ -668,24 +898,28 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Birim Pay Fiyatı (TL)</label>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                {txType === 'BUY' ? 'Birim Alış Fiyatı (TL)' : 'Birim Satış Fiyatı (TL)'}
+              </label>
               <input
                 type="text"
                 value={unitPrice}
                 onChange={(e) => handleUnitPriceChange(e.target.value)}
-                placeholder="Örn: 15.42"
+                placeholder="Örn: 14.50"
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-amber-400"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Toplam Alış Tutarı (TL)</label>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              {txType === 'BUY' ? 'Toplam Ödenen Tutar (TL)' : 'Toplam Satış Geliri (TL)'}
+            </label>
             <input
               type="text"
               value={totalTRY}
               onChange={(e) => handleTotalTRYChange(e.target.value)}
-              placeholder="Örn: 15420.00"
+              placeholder="Örn: 14500"
               className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono font-bold text-base focus:outline-none focus:border-amber-400"
             />
           </div>
@@ -707,7 +941,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Örn: Portföy eklemesi"
+                placeholder="Örn: Portföy takviyesi"
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
               />
             </div>
@@ -715,20 +949,37 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
 
           <div className="flex justify-end gap-2 pt-2">
             <button
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => {
+                setIsModalOpen(false);
+                setIsCreatingNewFund(false);
+                setFundSuggestions([]);
+              }}
               className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium"
             >
               Vazgeç
             </button>
             <button
               onClick={handleSaveTransaction}
-              className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400"
+              className={`px-5 py-2 rounded-xl text-xs font-bold shadow-md transition-colors ${
+                txType === 'BUY' 
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20' 
+                  : 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-500/20'
+              }`}
             >
-              Fon Alımını Kaydet
+              {txType === 'BUY' ? 'Alışı Kaydet' : 'Satışı Kaydet'}
             </button>
           </div>
         </div>
       </Modal>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+      />
     </div>
   );
 };

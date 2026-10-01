@@ -11,7 +11,7 @@ interface BottomNavProps {
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) => {
   const tabs = [
     { id: 'dashboard' as TabType, label: 'Özet', icon: LayoutDashboard },
-    { id: 'budget' as TabType, label: 'Bütçe & Kart', icon: TableProperties },
+    { id: 'budget' as TabType, label: 'Gelir & Gider', icon: TableProperties },
     { id: 'assets' as TabType, label: 'Varlıklar', icon: Coins },
     { id: 'plan' as TabType, label: 'Yatırım', icon: Target },
     { id: 'settings' as TabType, label: 'Ayarlar', icon: Settings },
