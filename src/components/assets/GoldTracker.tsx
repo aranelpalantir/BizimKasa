@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Plus, Coins, ArrowUpRight, ArrowDownRight, History, Trash2, Calendar, Filter, Sparkles } from 'lucide-react';
+import { Plus, Coins, ArrowUpRight, ArrowDownRight, History, Trash2, Edit2, Calendar, Filter, Sparkles } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GroupFilterBar } from '../common/GroupFilterBar';
 import { db } from '../../db/db';
-import { formatTRY, formatNumber } from '../../services/portfolioService';
+import { formatTRY, formatNumber, parseUserInputNumber, formatForInput } from '../../services/portfolioService';
 import type { Account, AssetTransaction, MarketRate, Group, AssetSubType } from '../../types/finance';
 
 interface GoldTrackerProps {
@@ -20,7 +20,7 @@ const MONTH_NAMES = [
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ];
 
-type GoldTypeTab = 'PHYSICAL_GRAM' | 'BANK_GRAM' | 'CEYREK';
+type GoldTypeTab = 'BANK_GRAM' | 'PHYSICAL_GRAM' | 'CEYREK' | 'YARIM' | 'TAM' | 'CUMHURIYET';
 type HistoryFilter = 'ALL' | '1M' | '3M' | '6M' | 'THIS_YEAR' | 'PREV_YEAR';
 
 export const GoldTracker: React.FC<GoldTrackerProps> = ({
@@ -34,6 +34,11 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   const [activeGoldType, setActiveGoldType] = useState<GoldTypeTab>('BANK_GRAM');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
+  const [historyYearFilter, setHistoryYearFilter] = useState<string>('ALL');
+  const [historyStartDate, setHistoryStartDate] = useState<string>('');
+  const [historyEndDate, setHistoryEndDate] = useState<string>('');
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const itemsPerPage = 10;
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // New Transaction Form
@@ -45,6 +50,16 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   const [unitTRY, setUnitTRY] = useState('');
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [note, setNote] = useState('');
+
+  // Edit Transaction Form State
+  const [editingTx, setEditingTx] = useState<AssetTransaction | null>(null);
+  const [editTxType, setEditTxType] = useState<'BUY' | 'SELL'>('BUY');
+  const [editGroupId, setEditGroupId] = useState<string>('');
+  const [editQuantity, setEditQuantity] = useState('');
+  const [editTotalTRY, setEditTotalTRY] = useState('');
+  const [editUnitTRY, setEditUnitTRY] = useState('');
+  const [editTxDate, setEditTxDate] = useState('');
+  const [editNote, setEditNote] = useState('');
 
   // Confirm delete dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -63,24 +78,39 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   const physGramRate = rates.find(r => r.symbol === 'XAU_GR_PHYSICAL')?.rateTRY || 6710.00;
   const bankGramRate = rates.find(r => r.symbol === 'XAU_GR_BANK')?.rateTRY || 6561.65;
   const ceyrekRate = rates.find(r => r.symbol === 'XAU_CEYREK')?.rateTRY || 10980.00;
+  const yarimRate = rates.find(r => r.symbol === 'XAU_YARIM')?.rateTRY || (ceyrekRate * 2);
+  const tamRate = rates.find(r => r.symbol === 'XAU_TAM')?.rateTRY || (ceyrekRate * 4);
+  const cumhuriyetRate = rates.find(r => r.symbol === 'XAU_CUMHURIYET')?.rateTRY || Math.round((ceyrekRate * (7.216 / 1.75)) * 100) / 100;
   
   const currentRate = 
     activeGoldType === 'PHYSICAL_GRAM' ? physGramRate :
-    activeGoldType === 'BANK_GRAM' ? bankGramRate : ceyrekRate;
+    activeGoldType === 'BANK_GRAM' ? bankGramRate :
+    activeGoldType === 'CEYREK' ? ceyrekRate :
+    activeGoldType === 'YARIM' ? yarimRate :
+    activeGoldType === 'TAM' ? tamRate : cumhuriyetRate;
 
-  // CONSOLIDATED GOLD CALCULATION IN GRAMS ACROSS ALL 3 TYPES
+  // CONSOLIDATED GOLD CALCULATION IN GRAMS ACROSS ALL TYPES
   const calcTotalGoldEquivalent = () => {
     const physAccounts = accounts.filter(a => a.subType === 'GOLD_GRAM_PHYSICAL' && (selectedGroupId === 'ALL' || a.groupId === selectedGroupId));
     const bankAccounts = accounts.filter(a => a.subType === 'GOLD_GRAM_BANK' && (selectedGroupId === 'ALL' || a.groupId === selectedGroupId));
     const ceyrekAccounts = accounts.filter(a => a.subType === 'GOLD_CEYREK' && (selectedGroupId === 'ALL' || a.groupId === selectedGroupId));
+    const yarimAccounts = accounts.filter(a => a.subType === 'GOLD_YARIM' && (selectedGroupId === 'ALL' || a.groupId === selectedGroupId));
+    const tamAccounts = accounts.filter(a => a.subType === 'GOLD_TAM' && (selectedGroupId === 'ALL' || a.groupId === selectedGroupId));
+    const cumhuriyetAccounts = accounts.filter(a => a.subType === 'GOLD_CUMHURIYET' && (selectedGroupId === 'ALL' || a.groupId === selectedGroupId));
 
     const physIds = new Set(physAccounts.map(a => a.id));
     const bankIds = new Set(bankAccounts.map(a => a.id));
     const ceyrekIds = new Set(ceyrekAccounts.map(a => a.id));
+    const yarimIds = new Set(yarimAccounts.map(a => a.id));
+    const tamIds = new Set(tamAccounts.map(a => a.id));
+    const cumhuriyetIds = new Set(cumhuriyetAccounts.map(a => a.id));
 
     let physQty = 0;
     let bankQty = 0;
     let ceyrekQty = 0;
+    let yarimQty = 0;
+    let tamQty = 0;
+    let cumhuriyetQty = 0;
 
     for (const t of transactions) {
       if (physIds.has(t.accountId)) {
@@ -89,26 +119,39 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
         bankQty += (t.type === 'BUY' ? t.quantity : -t.quantity);
       } else if (ceyrekIds.has(t.accountId)) {
         ceyrekQty += (t.type === 'BUY' ? t.quantity : -t.quantity);
+      } else if (yarimIds.has(t.accountId)) {
+        yarimQty += (t.type === 'BUY' ? t.quantity : -t.quantity);
+      } else if (tamIds.has(t.accountId)) {
+        tamQty += (t.type === 'BUY' ? t.quantity : -t.quantity);
+      } else if (cumhuriyetIds.has(t.accountId)) {
+        cumhuriyetQty += (t.type === 'BUY' ? t.quantity : -t.quantity);
       }
     }
 
     physQty = Math.max(0, physQty);
     bankQty = Math.max(0, bankQty);
     ceyrekQty = Math.max(0, ceyrekQty);
+    yarimQty = Math.max(0, yarimQty);
+    tamQty = Math.max(0, tamQty);
+    cumhuriyetQty = Math.max(0, cumhuriyetQty);
 
-    // 1 Çeyrek Altın = 1.75 gr kabul edilir
+    // 1 Çeyrek = 1.75 gr, 1 Yarım = 3.50 gr, 1 Tam = 7.00 gr, 1 Cumhuriyet = 7.216 gr
     const ceyrekInGrams = ceyrekQty * 1.75;
-    const totalGrams = physQty + bankQty + ceyrekInGrams;
-    const totalValueTRY = (physQty * physGramRate) + (bankQty * bankGramRate) + (ceyrekQty * ceyrekRate);
+    const yarimInGrams = yarimQty * 3.50;
+    const tamInGrams = tamQty * 7.00;
+    const cumhuriyetInGrams = cumhuriyetQty * 7.216;
+    const totalGrams = physQty + bankQty + ceyrekInGrams + yarimInGrams + tamInGrams + cumhuriyetInGrams;
+    const totalValueTRY = (physQty * physGramRate) + (bankQty * bankGramRate) + (ceyrekQty * ceyrekRate) + (yarimQty * yarimRate) + (tamQty * tamRate) + (cumhuriyetQty * cumhuriyetRate);
 
-    return { physQty, bankQty, ceyrekQty, ceyrekInGrams, totalGrams, totalValueTRY };
+    return { physQty, bankQty, ceyrekQty, yarimQty, tamQty, cumhuriyetQty, ceyrekInGrams, yarimInGrams, tamInGrams, cumhuriyetInGrams, totalGrams, totalValueTRY };
   };
 
   const goldSummary = calcTotalGoldEquivalent();
 
   // Filter groups: only show groups that have gold accounts with at least one transaction
+  const goldSubTypes = new Set(['GOLD_GRAM_PHYSICAL', 'GOLD_GRAM_BANK', 'GOLD_CEYREK', 'GOLD_YARIM', 'GOLD_TAM', 'GOLD_CUMHURIYET']);
   const groupsWithGold = groups.filter(g => {
-    const gAccounts = accounts.filter(a => a.groupId === g.id && (a.subType === 'GOLD_GRAM_PHYSICAL' || a.subType === 'GOLD_GRAM_BANK' || a.subType === 'GOLD_CEYREK'));
+    const gAccounts = accounts.filter(a => a.groupId === g.id && goldSubTypes.has(a.subType));
     if (gAccounts.length === 0) return false;
     const gAccIds = new Set(gAccounts.map(a => a.id));
     return transactions.some(t => gAccIds.has(t.accountId));
@@ -117,7 +160,13 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   // Determine current asset subType
   const currentSubType: AssetSubType = 
     activeGoldType === 'PHYSICAL_GRAM' ? 'GOLD_GRAM_PHYSICAL' :
-    activeGoldType === 'BANK_GRAM' ? 'GOLD_GRAM_BANK' : 'GOLD_CEYREK';
+    activeGoldType === 'BANK_GRAM' ? 'GOLD_GRAM_BANK' :
+    activeGoldType === 'CEYREK' ? 'GOLD_CEYREK' :
+    activeGoldType === 'YARIM' ? 'GOLD_YARIM' :
+    activeGoldType === 'TAM' ? 'GOLD_TAM' : 'GOLD_CUMHURIYET';
+
+  const isPieceGold = activeGoldType === 'CEYREK' || activeGoldType === 'YARIM' || activeGoldType === 'TAM' || activeGoldType === 'CUMHURIYET';
+  const isPhysicalGold = activeGoldType !== 'BANK_GRAM';
 
   // Filter accounts for this gold subType, respecting group filter
   const matchingAccounts = accounts.filter(a => {
@@ -131,9 +180,9 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   // Transactions for matching accounts
   const assetTxs = transactions.filter(t => matchingAccountIds.has(t.accountId));
 
-  // Dynamic years from asset transactions
-  const uniqueYears = Array.from(new Set(assetTxs.map(t => t.year)));
-  const dynamicYears = Array.from(new Set([2024, 2025, 2026, 2027, ...uniqueYears])).sort((a, b) => a - b);
+  // Dynamic years from asset transactions: only include years with transactions!
+  const uniqueYears = Array.from(new Set(assetTxs.map(t => t.year))).sort((a, b) => a - b);
+  const dynamicYears = uniqueYears;
 
   // Multi-Year Monthly Matrix calculations
   const getMatrixCell = (year: number, month: number) => {
@@ -185,26 +234,32 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
 
   // Overall holdings across all time for this gold type
   let totalBoughtQty = 0;
-  let totalCostTRY = 0;
+  let totalBoughtCostTRY = 0;
+  let totalSoldQty = 0;
+
   for (const t of assetTxs) {
     if (t.type === 'BUY') {
       totalBoughtQty += t.quantity;
-      totalCostTRY += t.totalAmountTRY;
+      totalBoughtCostTRY += t.totalAmountTRY;
     } else {
-      totalBoughtQty -= t.quantity;
-      totalCostTRY -= t.totalAmountTRY;
+      totalSoldQty += t.quantity;
     }
   }
 
-  const currentHoldingQty = Math.max(0, totalBoughtQty);
-  const avgUnitCost = currentHoldingQty > 0 ? totalCostTRY / currentHoldingQty : 0;
+  const currentHoldingQty = Math.max(0, totalBoughtQty - totalSoldQty);
+  const avgUnitCost = totalBoughtQty > 0 ? totalBoughtCostTRY / totalBoughtQty : 0;
+  const currentCostBasisTRY = currentHoldingQty * avgUnitCost;
   const currentValueTRY = currentHoldingQty * currentRate;
-  const profitLossTRY = currentValueTRY - totalCostTRY;
-  const profitLossPct = totalCostTRY > 0 ? (profitLossTRY / totalCostTRY) * 100 : 0;
+  const profitLossTRY = currentValueTRY - currentCostBasisTRY;
+  const profitLossPct = currentCostBasisTRY > 0 ? (profitLossTRY / currentCostBasisTRY) * 100 : 0;
   const isProfit = profitLossTRY >= 0;
 
-  // Date Range Filter logic for Transaction History
+  // Date Range, Year & Custom Filter logic for Transaction History
   const filteredTxs = assetTxs.filter((tx) => {
+    if (historyYearFilter !== 'ALL' && tx.year !== Number(historyYearFilter)) return false;
+    if (historyStartDate && tx.date < historyStartDate) return false;
+    if (historyEndDate && tx.date > historyEndDate) return false;
+
     if (historyFilter === 'ALL') return true;
     const txTime = new Date(tx.date).getTime();
     const now = Date.now();
@@ -216,33 +271,45 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
     if (historyFilter === 'THIS_YEAR') return tx.year === 2026;
     if (historyFilter === 'PREV_YEAR') return tx.year === 2025;
     return true;
+  }).sort((a, b) => {
+    const dateDiff = b.date.localeCompare(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    return (b.createdAt || '').localeCompare(a.createdAt || '');
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredTxs.length / itemsPerPage));
+  const currentPage = Math.min(historyPage, totalPages);
+  const paginatedTxs = filteredTxs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Inputs sync
   const handleQuantityChange = (qVal: string) => {
-    setQuantity(qVal);
-    const q = parseFloat(qVal.replace(',', '.'));
-    const u = parseFloat(unitTRY.replace(',', '.'));
-    if (!isNaN(q) && !isNaN(u) && q > 0) {
-      setTotalTRY((q * u).toFixed(2));
+    let cleanVal = qVal;
+    if (isPhysicalGold) {
+      cleanVal = qVal.replace(/[^\d]/g, '');
+    }
+    setQuantity(cleanVal);
+    const q = parseUserInputNumber(cleanVal);
+    const u = parseUserInputNumber(unitTRY);
+    if (q > 0 && u > 0) {
+      setTotalTRY(formatForInput(Math.round(q * u * 100) / 100));
     }
   };
 
   const handleUnitChange = (uVal: string) => {
     setUnitTRY(uVal);
-    const q = parseFloat(quantity.replace(',', '.'));
-    const u = parseFloat(uVal.replace(',', '.'));
-    if (!isNaN(q) && !isNaN(u) && q > 0) {
-      setTotalTRY((q * u).toFixed(2));
+    const q = parseUserInputNumber(quantity);
+    const u = parseUserInputNumber(uVal);
+    if (q > 0 && u > 0) {
+      setTotalTRY(formatForInput(Math.round(q * u * 100) / 100));
     }
   };
 
   const handleTotalChange = (tVal: string) => {
     setTotalTRY(tVal);
-    const q = parseFloat(quantity.replace(',', '.'));
-    const t = parseFloat(tVal.replace(',', '.'));
-    if (!isNaN(q) && !isNaN(t) && q > 0) {
-      setUnitTRY((t / q).toFixed(2));
+    const q = parseUserInputNumber(quantity);
+    const t = parseUserInputNumber(tVal);
+    if (q > 0 && t > 0) {
+      setUnitTRY(formatForInput(Math.round((t / q) * 100) / 100));
     }
   };
 
@@ -253,7 +320,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
 
     const existingAcc = accounts.find(a => a.groupId === targetGrp && a.subType === currentSubType);
     setTargetAccountId(existingAcc?.id || '');
-    setUnitTRY(currentRate.toString());
+    setUnitTRY(formatForInput(currentRate));
     setQuantity('');
     setTotalTRY('');
     setNote('');
@@ -271,7 +338,10 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
         const groupObj = groups.find(g => g.id === targetGroupId);
         const typeTitle = 
           activeGoldType === 'PHYSICAL_GRAM' ? 'Fiziki Gram Altın' :
-          activeGoldType === 'BANK_GRAM' ? 'Banka Gram Altın' : 'Çeyrek Altın';
+          activeGoldType === 'BANK_GRAM' ? 'Banka Gram Altın' :
+          activeGoldType === 'CEYREK' ? 'Çeyrek Altın' :
+          activeGoldType === 'YARIM' ? 'Yarım Altın' :
+          activeGoldType === 'TAM' ? 'Tam Altın' : 'Cumhuriyet Altını';
 
         const newAcc: Account = {
           id: `acc-gold-${Date.now()}`,
@@ -280,7 +350,10 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
           type: 'ASSET',
           subType: currentSubType,
           symbol: activeGoldType === 'PHYSICAL_GRAM' ? 'XAU_GR_PHYSICAL' :
-                  activeGoldType === 'BANK_GRAM' ? 'XAU_GR_BANK' : 'XAU_CEYREK',
+                  activeGoldType === 'BANK_GRAM' ? 'XAU_GR_BANK' :
+                  activeGoldType === 'CEYREK' ? 'XAU_CEYREK' :
+                  activeGoldType === 'YARIM' ? 'XAU_YARIM' :
+                  activeGoldType === 'TAM' ? 'XAU_TAM' : 'XAU_CUMHURIYET',
           currency: 'TRY',
           order: accounts.length + 1,
           createdAt: new Date().toISOString()
@@ -290,11 +363,14 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
       }
     }
 
-    const q = parseFloat(quantity.replace(',', '.'));
-    const t = parseFloat(totalTRY.replace(',', '.'));
-    const u = parseFloat(unitTRY.replace(',', '.')) || (t / q);
+    let q = parseUserInputNumber(quantity);
+    if (isPhysicalGold) {
+      q = Math.round(q);
+    }
+    const t = parseUserInputNumber(totalTRY);
+    const u = parseUserInputNumber(unitTRY) || (q > 0 ? t / q : 0);
 
-    if (isNaN(q) || q <= 0 || isNaN(t) || t <= 0) return;
+    if (q <= 0 || t <= 0) return;
 
     const dateObj = new Date(txDate);
     const newTx: AssetTransaction = {
@@ -320,6 +396,111 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
     setNote('');
   };
 
+  const handleOpenEditTx = (tx: AssetTransaction) => {
+    const defaultGid = tx.groupId || accounts.find(a => a.id === tx.accountId)?.groupId || groups[0]?.id || '';
+    setEditingTx(tx);
+    setEditTxType(tx.type);
+    setEditGroupId(defaultGid);
+    setEditQuantity(formatForInput(tx.quantity));
+    setEditUnitTRY(formatForInput(tx.unitPriceTRY));
+    setEditTotalTRY(formatForInput(tx.totalAmountTRY));
+    setEditTxDate(tx.date);
+    setEditNote(tx.note || '');
+  };
+
+  const handleEditQuantityChange = (qVal: string) => {
+    let cleanVal = qVal;
+    if (isPhysicalGold) {
+      cleanVal = qVal.replace(/[^\d]/g, '');
+    }
+    setEditQuantity(cleanVal);
+    const q = parseUserInputNumber(cleanVal);
+    const u = parseUserInputNumber(editUnitTRY);
+    if (q > 0 && u > 0) {
+      setEditTotalTRY(formatForInput(Math.round(q * u * 100) / 100));
+    }
+  };
+
+  const handleEditUnitChange = (uVal: string) => {
+    setEditUnitTRY(uVal);
+    const q = parseUserInputNumber(editQuantity);
+    const u = parseUserInputNumber(uVal);
+    if (q > 0 && u > 0) {
+      setEditTotalTRY(formatForInput(Math.round(q * u * 100) / 100));
+    }
+  };
+
+  const handleEditTotalChange = (tVal: string) => {
+    setEditTotalTRY(tVal);
+    const q = parseUserInputNumber(editQuantity);
+    const t = parseUserInputNumber(tVal);
+    if (q > 0 && t > 0) {
+      setEditUnitTRY(formatForInput(Math.round((t / q) * 100) / 100));
+    }
+  };
+
+  const handleSaveEditTransaction = async () => {
+    if (!editingTx) return;
+    let q = parseUserInputNumber(editQuantity);
+    if (isPhysicalGold) {
+      q = Math.round(q);
+    }
+    const t = parseUserInputNumber(editTotalTRY);
+    const u = parseUserInputNumber(editUnitTRY) || (q > 0 ? t / q : 0);
+
+    if (q <= 0 || t <= 0) return;
+
+    let finalAccountId = editingTx.accountId;
+    if (editGroupId !== editingTx.groupId) {
+      const existingAcc = accounts.find(a => a.groupId === editGroupId && a.subType === currentSubType);
+      if (existingAcc) {
+        finalAccountId = existingAcc.id;
+      } else {
+        const groupObj = groups.find(g => g.id === editGroupId);
+        const typeTitle = 
+          activeGoldType === 'PHYSICAL_GRAM' ? 'Fiziki Gram Altın' :
+          activeGoldType === 'BANK_GRAM' ? 'Banka Gram Altın' :
+          activeGoldType === 'CEYREK' ? 'Çeyrek Altın' :
+          activeGoldType === 'YARIM' ? 'Yarım Altın' :
+          activeGoldType === 'TAM' ? 'Tam Altın' : 'Cumhuriyet Altını';
+
+        const newAcc: Account = {
+          id: `acc-gold-${Date.now()}`,
+          groupId: editGroupId,
+          name: `${groupObj?.name || ''} ${typeTitle}`.trim(),
+          type: 'ASSET',
+          subType: currentSubType,
+          symbol: activeGoldType === 'PHYSICAL_GRAM' ? 'XAU_GR_PHYSICAL' :
+                  activeGoldType === 'BANK_GRAM' ? 'XAU_GR_BANK' :
+                  activeGoldType === 'CEYREK' ? 'XAU_CEYREK' :
+                  activeGoldType === 'YARIM' ? 'XAU_YARIM' :
+                  activeGoldType === 'TAM' ? 'XAU_TAM' : 'XAU_CUMHURIYET',
+          currency: 'TRY',
+          order: accounts.length + 1,
+          createdAt: new Date().toISOString()
+        };
+        await db.accounts.add(newAcc);
+        finalAccountId = newAcc.id;
+      }
+    }
+
+    const dateObj = new Date(editTxDate);
+    await db.transactions.update(editingTx.id, {
+      accountId: finalAccountId,
+      groupId: editGroupId,
+      date: editTxDate,
+      year: dateObj.getFullYear(),
+      month: dateObj.getMonth() + 1,
+      type: editTxType,
+      quantity: q,
+      totalAmountTRY: t,
+      unitPriceTRY: u,
+      note: editNote.trim() || undefined
+    });
+
+    setEditingTx(null);
+  };
+
   const handleDeleteTx = (id: string) => {
     setConfirmDialog({
       isOpen: true,
@@ -331,7 +512,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
     });
   };
 
-  const unitLabel = activeGoldType === 'CEYREK' ? 'Adet' : 'Gram';
+  const unitLabel = isPieceGold ? 'Adet' : 'Gram';
 
   return (
     <div className="space-y-4">
@@ -369,8 +550,26 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             </div>
             <div className="px-2.5 py-1 rounded-xl bg-slate-950/60 border border-white/10 text-slate-300">
               <span className="text-slate-500 mr-1.5">Çeyrek:</span>
-              <span className="font-bold text-amber-300 font-mono">{formatNumber(goldSummary.ceyrekQty, 0, hideValues)} Adet (~{formatNumber(goldSummary.ceyrekInGrams, 2, hideValues)} gr)</span>
+              <span className="font-bold text-amber-300 font-mono">{formatNumber(goldSummary.ceyrekQty, 0, hideValues)} Adet</span>
             </div>
+            {goldSummary.yarimQty > 0 && (
+              <div className="px-2.5 py-1 rounded-xl bg-slate-950/60 border border-white/10 text-slate-300">
+                <span className="text-slate-500 mr-1.5">Yarım:</span>
+                <span className="font-bold text-amber-300 font-mono">{formatNumber(goldSummary.yarimQty, 0, hideValues)} Adet</span>
+              </div>
+            )}
+            {goldSummary.tamQty > 0 && (
+              <div className="px-2.5 py-1 rounded-xl bg-slate-950/60 border border-white/10 text-slate-300">
+                <span className="text-slate-500 mr-1.5">Tam:</span>
+                <span className="font-bold text-amber-300 font-mono">{formatNumber(goldSummary.tamQty, 0, hideValues)} Adet</span>
+              </div>
+            )}
+            {goldSummary.cumhuriyetQty > 0 && (
+              <div className="px-2.5 py-1 rounded-xl bg-slate-950/60 border border-white/10 text-slate-300">
+                <span className="text-slate-500 mr-1.5">Cumhuriyet:</span>
+                <span className="font-bold text-amber-300 font-mono">{formatNumber(goldSummary.cumhuriyetQty, 0, hideValues)} Adet</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -405,6 +604,33 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             <Coins className="w-3.5 h-3.5" />
             <span>Çeyrek Altın</span>
           </button>
+          <button
+            onClick={() => setActiveGoldType('YARIM')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+              activeGoldType === 'YARIM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Coins className="w-3.5 h-3.5" />
+            <span>Yarım Altın</span>
+          </button>
+          <button
+            onClick={() => setActiveGoldType('TAM')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+              activeGoldType === 'TAM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Coins className="w-3.5 h-3.5" />
+            <span>Tam Altın</span>
+          </button>
+          <button
+            onClick={() => setActiveGoldType('CUMHURIYET')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+              activeGoldType === 'CUMHURIYET' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Coins className="w-3.5 h-3.5" />
+            <span>Cumhuriyet Altını</span>
+          </button>
         </div>
 
         <button
@@ -421,7 +647,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
         groups={groupsWithGold.length > 0 ? groupsWithGold : groups}
         selectedGroupId={selectedGroupId}
         onSelectGroup={setSelectedGroupId}
-        title="Hesap Grubu"
+        title="Hesap"
       />
 
       {/* METRIC HEADER */}
@@ -434,16 +660,16 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             {formatTRY(currentValueTRY, hideValues)}
           </span>
           <span className="text-[10px] text-slate-500">
-            {formatNumber(currentHoldingQty, activeGoldType === 'CEYREK' ? 0 : 2, hideValues)} {unitLabel}
+            {formatNumber(currentHoldingQty, isPieceGold ? 0 : 2, hideValues)} {unitLabel}
           </span>
         </div>
 
         <div className="flex flex-col border-l border-white/10 pl-2.5">
           <span className="text-[11px] font-semibold text-slate-400 uppercase">Maliyet</span>
           <span className="text-base sm:text-lg font-bold text-slate-200 mt-1 font-mono">
-            {formatTRY(totalCostTRY, hideValues)}
+            {formatTRY(currentCostBasisTRY, hideValues)}
           </span>
-          <span className="text-[10px] text-slate-500">Toplam Ödenen</span>
+          <span className="text-[10px] text-slate-500">Mevcut Varlık Maliyeti</span>
         </div>
 
         <div className="flex flex-col border-l border-white/10 pl-2.5">
@@ -500,49 +726,59 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 font-mono">
-            {dynamicYears.map((year) => {
-              const yearTotal = getYearTotal(year);
-              return (
-                <tr key={year} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="py-2 px-3 text-slate-300 font-sans font-bold sticky left-0 z-10 bg-slate-900/95 border-r border-white/10">
-                    {year}
+            {dynamicYears.length === 0 ? (
+              <tr>
+                <td colSpan={14} className="py-8 text-center text-slate-400 font-sans text-xs">
+                  Bu altın türünde henüz hareket kaydı bulunmuyor. Yeni işlem eklediğinizde yıllık hareket matrisi burada oluşacaktır.
+                </td>
+              </tr>
+            ) : (
+              <>
+                {dynamicYears.map((year) => {
+                  const yearTotal = getYearTotal(year);
+                  return (
+                    <tr key={year} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="py-2 px-3 text-slate-300 font-sans font-bold sticky left-0 z-10 bg-slate-900/95 border-r border-white/10">
+                        {year}
+                      </td>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                        const val = getMatrixCell(year, month);
+                        return (
+                          <td
+                            key={month}
+                            className={`py-2 px-2 text-right ${
+                              val > 0 ? 'text-slate-200' : val < 0 ? 'text-rose-400 font-bold' : 'text-slate-600'
+                            }`}
+                          >
+                            {val !== 0 ? formatNumber(val, isPieceGold ? 0 : 2, hideValues) : '-'}
+                          </td>
+                        );
+                      })}
+                      <td className={`py-2 px-3 text-right font-bold bg-slate-900/90 ${yearTotal < 0 ? 'text-rose-400' : 'text-amber-300'}`}>
+                        {yearTotal !== 0 ? formatNumber(yearTotal, isPieceGold ? 0 : 2, hideValues) : '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                <tr className="bg-slate-950/95 font-bold text-amber-300 border-t-2 border-white/10">
+                  <td className="py-2.5 px-3 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
+                    Genel Toplam
                   </td>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-                    const val = getMatrixCell(year, month);
+                    const monthTotal = getMonthTotalAcrossYears(month);
                     return (
-                      <td
-                        key={month}
-                        className={`py-2 px-2 text-right ${
-                          val > 0 ? 'text-slate-200' : val < 0 ? 'text-rose-400 font-bold' : 'text-slate-600'
-                        }`}
-                      >
-                        {val !== 0 ? formatNumber(val, activeGoldType === 'CEYREK' ? 0 : 2, hideValues) : '-'}
+                      <td key={month} className={`py-2.5 px-2 text-right ${monthTotal < 0 ? 'text-rose-400' : 'text-slate-200'}`}>
+                        {monthTotal !== 0 ? formatNumber(monthTotal, isPieceGold ? 0 : 2, hideValues) : '-'}
                       </td>
                     );
                   })}
-                  <td className={`py-2 px-3 text-right font-bold bg-slate-900/90 ${yearTotal < 0 ? 'text-rose-400' : 'text-amber-300'}`}>
-                    {yearTotal !== 0 ? formatNumber(yearTotal, activeGoldType === 'CEYREK' ? 0 : 2, hideValues) : '-'}
+                  <td className="py-2.5 px-3 text-right font-extrabold text-amber-400 text-sm bg-slate-950">
+                    {formatNumber(currentHoldingQty, isPieceGold ? 0 : 2, hideValues)}
                   </td>
                 </tr>
-              );
-            })}
-
-            <tr className="bg-slate-950/95 font-bold text-amber-300 border-t-2 border-white/10">
-              <td className="py-2.5 px-3 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
-                Genel Toplam
-              </td>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-                const monthTotal = getMonthTotalAcrossYears(month);
-                return (
-                  <td key={month} className={`py-2.5 px-2 text-right ${monthTotal < 0 ? 'text-rose-400' : 'text-slate-200'}`}>
-                    {monthTotal !== 0 ? formatNumber(monthTotal, activeGoldType === 'CEYREK' ? 0 : 2, hideValues) : '-'}
-                  </td>
-                );
-              })}
-              <td className="py-2.5 px-3 text-right font-extrabold text-amber-400 text-sm bg-slate-950">
-                {formatNumber(currentHoldingQty, activeGoldType === 'CEYREK' ? 0 : 2, hideValues)}
-              </td>
-            </tr>
+              </>
+            )}
           </tbody>
         </table>
       </div>
@@ -596,11 +832,11 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
               </td>
               {monthlyData.map((d) => (
                 <td key={d.month} className="py-2 px-2 text-right text-slate-300">
-                  {d.qty > 0 ? formatNumber(d.qty, activeGoldType === 'CEYREK' ? 0 : 2, hideValues) : '-'}
+                  {d.qty > 0 ? formatNumber(d.qty, isPieceGold ? 0 : 2, hideValues) : '-'}
                 </td>
               ))}
               <td className="py-2 px-3 text-right font-bold text-amber-300 bg-slate-900/90">
-                {formatNumber(monthlyData.reduce((s, d) => s + d.qty, 0), activeGoldType === 'CEYREK' ? 0 : 2, hideValues)}
+                {formatNumber(monthlyData.reduce((s, d) => s + d.qty, 0), isPieceGold ? 0 : 2, hideValues)}
               </td>
             </tr>
 
@@ -637,15 +873,16 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
         </table>
       </div>
 
-      {/* TRANSACTION HISTORY WITH DATE FILTERS */}
+      {/* TRANSACTION HISTORY WITH DATE FILTERS & PAGINATION */}
       <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
             <History className="w-3.5 h-3.5 text-amber-400" />
             <span>Alış & Satış Hareket Geçmişi</span>
+            <span className="text-[10px] text-slate-400 font-normal">({filteredTxs.length} İşlem)</span>
           </h4>
 
-          {/* Date Filter Chips */}
+          {/* Quick Filter Chips */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
             <Filter className="w-3 h-3 text-slate-500 mr-1 flex-shrink-0" />
             {[
@@ -653,12 +890,13 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
               { id: '1M' as const, label: 'Son 1 Ay' },
               { id: '3M' as const, label: 'Son 3 Ay' },
               { id: '6M' as const, label: 'Son 6 Ay' },
-              { id: 'THIS_YEAR' as const, label: '2026' },
-              { id: 'PREV_YEAR' as const, label: '2025' },
             ].map((f) => (
               <button
                 key={f.id}
-                onClick={() => setHistoryFilter(f.id)}
+                onClick={() => {
+                  setHistoryFilter(f.id);
+                  setHistoryPage(1);
+                }}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors flex-shrink-0 ${
                   historyFilter === f.id
                     ? 'bg-amber-500 text-slate-950 font-bold'
@@ -671,11 +909,73 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
           </div>
         </div>
 
+        {/* Extended Filter Bar: Year & Custom Date Range */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5 text-xs">
+          {/* Year Filter */}
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-slate-400">Yıl:</span>
+            <select
+              value={historyYearFilter}
+              onChange={(e) => {
+                setHistoryYearFilter(e.target.value);
+                setHistoryPage(1);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400 cursor-pointer"
+            >
+              <option value="ALL">Tüm Yıllar</option>
+              {uniqueYears.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Custom Date Range */}
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-slate-400">Tarih:</span>
+            <input
+              type="date"
+              value={historyStartDate}
+              onChange={(e) => {
+                setHistoryStartDate(e.target.value);
+                setHistoryPage(1);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-950 border border-white/10 text-white text-[11px] focus:outline-none"
+              title="Başlangıç Tarihi"
+            />
+            <span className="text-slate-500">-</span>
+            <input
+              type="date"
+              value={historyEndDate}
+              onChange={(e) => {
+                setHistoryEndDate(e.target.value);
+                setHistoryPage(1);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-950 border border-white/10 text-white text-[11px] focus:outline-none"
+              title="Bitiş Tarihi"
+            />
+          </div>
+
+          {(historyYearFilter !== 'ALL' || historyStartDate || historyEndDate || historyFilter !== 'ALL') && (
+            <button
+              onClick={() => {
+                setHistoryFilter('ALL');
+                setHistoryYearFilter('ALL');
+                setHistoryStartDate('');
+                setHistoryEndDate('');
+                setHistoryPage(1);
+              }}
+              className="text-[10px] text-amber-400 hover:underline ml-auto"
+            >
+              Filtreleri Temizle
+            </button>
+          )}
+        </div>
+
         {filteredTxs.length === 0 ? (
           <p className="text-xs text-slate-400 py-3 text-center">Bu filtreye uygun işlem kaydı bulunamadı.</p>
         ) : (
-          <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-            {filteredTxs.map((tx) => {
+          <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+            {paginatedTxs.map((tx) => {
               const acc = accounts.find(a => a.id === tx.accountId);
               const grp = groups.find(g => g.id === acc?.groupId || g.id === tx.groupId);
 
@@ -693,7 +993,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-200 font-medium">
-                          {formatNumber(tx.quantity, activeGoldType === 'CEYREK' ? 0 : 2, hideValues)} {unitLabel}
+                          {formatNumber(tx.quantity, isPieceGold ? 0 : 2, hideValues)} {unitLabel}
                         </span>
                         {grp && (
                           <span
@@ -718,6 +1018,13 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
                       <span className="text-[10px] text-slate-500">{tx.date}</span>
                     </div>
                     <button
+                      onClick={() => handleOpenEditTx(tx)}
+                      className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
+                      title="İşlemi Düzenle"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => handleDeleteTx(tx.id)}
                       className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
                       title="İşlemi Sil"
@@ -730,6 +1037,29 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             })}
           </div>
         )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs text-slate-400">
+            <button
+              onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-white font-medium transition-colors"
+            >
+              Önceki
+            </button>
+            <span className="font-mono text-[11px]">
+              Sayfa {currentPage} / {totalPages} ({filteredTxs.length} işlem)
+            </span>
+            <button
+              onClick={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-white font-medium transition-colors"
+            >
+              Sonraki
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ADD TRANSACTION MODAL WITH GROUP SELECTION */}
@@ -738,7 +1068,10 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
         onClose={() => setIsModalOpen(false)}
         title={
           activeGoldType === 'PHYSICAL_GRAM' ? 'Fiziki Gram Altın İşlemi' :
-          activeGoldType === 'BANK_GRAM' ? 'Banka Gram Altın İşlemi' : 'Çeyrek Altın İşlemi'
+          activeGoldType === 'BANK_GRAM' ? 'Banka Gram Altın İşlemi' :
+          activeGoldType === 'CEYREK' ? 'Çeyrek Altın İşlemi' :
+          activeGoldType === 'YARIM' ? 'Yarım Altın İşlemi' :
+          activeGoldType === 'TAM' ? 'Tam Altın İşlemi' : 'Cumhuriyet Altını İşlemi'
         }
       >
         <div className="space-y-4">
@@ -763,37 +1096,47 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             </button>
           </div>
 
-          {/* Group Selection */}
+          {/* Account Selection */}
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">
-              Hangi Gruba Ait?
+              Hangi Hesaba Ait?
             </label>
-            <select
-              value={targetGroupId}
-              onChange={(e) => {
-                setTargetGroupId(e.target.value);
-                setTargetAccountId('');
-              }}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
-            >
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
+            {groups.length === 0 ? (
+              <p className="text-xs text-amber-400">Henüz kayıtlı bir hesap bulunmuyor. Önce yukarıdan 'Yeni Hesap' eklemelisiniz.</p>
+            ) : (
+              <select
+                value={targetGroupId}
+                onChange={(e) => {
+                  setTargetGroupId(e.target.value);
+                  setTargetAccountId('');
+                }}
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+              >
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-1">
-                Miktar ({unitLabel})
+                Miktar ({unitLabel}) {isPhysicalGold && <span className="text-amber-400 font-semibold">(Tam Sayı)</span>}
               </label>
               <input
                 type="text"
+                inputMode={isPhysicalGold ? 'numeric' : 'decimal'}
                 value={quantity}
                 onChange={(e) => handleQuantityChange(e.target.value)}
-                placeholder="Örn: 5.0"
+                placeholder={isPhysicalGold ? 'Örn: 5' : 'Örn: 5,50'}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-amber-400"
               />
+              {isPhysicalGold && (
+                <p className="text-[10px] text-amber-400/80 mt-1">
+                  * Fiziki altın miktarında küsurat/ondalık girilemez.
+                </p>
+              )}
             </div>
 
             <div>
@@ -819,25 +1162,24 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="min-w-0">
               <label className="block text-xs font-medium text-slate-400 mb-1">İşlem Tarihi</label>
               <input
                 type="date"
                 value={txDate}
                 onChange={(e) => setTxDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
               />
             </div>
 
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-medium text-slate-400 mb-1">Açıklama / Not</label>
               <input
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Örn: Ay başı birikimi"
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
               />
             </div>
           </div>
@@ -854,6 +1196,132 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
               className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400"
             >
               İşlemi Kaydet
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* EDIT TRANSACTION MODAL */}
+      <Modal
+        isOpen={!!editingTx}
+        onClose={() => setEditingTx(null)}
+        title="Altın İşlemini Düzenle"
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-950 border border-white/10">
+            <button
+              type="button"
+              onClick={() => setEditTxType('BUY')}
+              className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                editTxType === 'BUY' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'
+              }`}
+            >
+              Alış (+)
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditTxType('SELL')}
+              className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                editTxType === 'SELL' ? 'bg-rose-500 text-white' : 'text-slate-400'
+              }`}
+            >
+              Satış / Bozdurma (-)
+            </button>
+          </div>
+
+          {/* Group Selection */}
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Hangi Hesaba Ait?
+            </label>
+            <select
+              value={editGroupId}
+              onChange={(e) => setEditGroupId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+            >
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                Miktar ({unitLabel}) {isPhysicalGold && <span className="text-amber-400 font-semibold">(Tam Sayı)</span>}
+              </label>
+              <input
+                type="text"
+                inputMode={isPhysicalGold ? 'numeric' : 'decimal'}
+                value={editQuantity}
+                onChange={(e) => handleEditQuantityChange(e.target.value)}
+                placeholder={isPhysicalGold ? 'Örn: 5' : 'Örn: 5,50'}
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-amber-400"
+              />
+              {isPhysicalGold && (
+                <p className="text-[10px] text-amber-400/80 mt-1">
+                  * Fiziki altın miktarında küsurat/ondalık girilemez.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Birim Fiyat (TL)</label>
+              <input
+                type="text"
+                value={editUnitTRY}
+                onChange={(e) => handleEditUnitChange(e.target.value)}
+                placeholder="Birim Fiyat"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-amber-400"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Toplam Tutar (TL)</label>
+            <input
+              type="text"
+              value={editTotalTRY}
+              onChange={(e) => handleEditTotalChange(e.target.value)}
+              placeholder="Toplam Tutar"
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono font-bold text-base focus:outline-none focus:border-amber-400"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-slate-400 mb-1">İşlem Tarihi</label>
+              <input
+                type="date"
+                value={editTxDate}
+                onChange={(e) => setEditTxDate(e.target.value)}
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-slate-400 mb-1">Açıklama / Not</label>
+              <input
+                type="text"
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => setEditingTx(null)}
+              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Vazgeç
+            </button>
+            <button
+              onClick={handleSaveEditTransaction}
+              className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400"
+            >
+              Değişiklikleri Kaydet
             </button>
           </div>
         </div>

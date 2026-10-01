@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import { seedInitialDataIfNeeded, forceResetWithDummyData } from './db/seed';
-import { fetchLiveRatesMultiSource } from './services/ratesService';
+import { fetchLiveRatesMultiSource, cleanupDeprecatedRates } from './services/ratesService';
 import { getSettings, updateSettings } from './services/securityService';
 import { Navbar } from './components/common/Navbar';
 import { BottomNav, type TabType } from './components/common/BottomNav';
@@ -12,6 +12,7 @@ import { MonthlyMatrixView } from './components/budget/MonthlyMatrixView';
 import { AssetDashboard } from './components/assets/AssetDashboard';
 import { InvestmentPlanner } from './components/investment/InvestmentPlanner';
 import { SettingsView } from './components/settings/SettingsView';
+import { PwaInstallModal } from './components/common/PwaInstallModal';
 import type { AppSettings } from './types/finance';
 
 export const App: React.FC = () => {
@@ -19,6 +20,11 @@ export const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isRefreshingRates, setIsRefreshingRates] = useState(false);
   
+  // PWA Install state
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
   // Settings & Security state
   const [settings, setSettings] = useState<AppSettings>({
     biometricsEnabled: false,
@@ -40,13 +46,18 @@ export const App: React.FC = () => {
 
   // Load Settings and Seed
   const loadSettingsAndInit = async () => {
-    // Check if dummy data v3 is seeded
-    const dummyVerRecord = await db.settings.get('dummyDataVersion');
-    if (!dummyVerRecord || dummyVerRecord.value < 3) {
-      await forceResetWithDummyData();
-      await db.settings.put({ key: 'dummyDataVersion', value: 3 });
+    // Check if user explicitly cleared all data
+    const clearedRecord = await db.settings.get('userClearedData');
+    if (clearedRecord && clearedRecord.value) {
+      // User explicitly cleared data; do not auto-seed dummy data
     } else {
-      await seedInitialDataIfNeeded();
+      const dummyVerRecord = await db.settings.get('dummyDataVersion');
+      if (!dummyVerRecord || dummyVerRecord.value < 6) {
+        await forceResetWithDummyData();
+        await db.settings.put({ key: 'dummyDataVersion', value: 6 });
+      } else {
+        await seedInitialDataIfNeeded();
+      }
     }
 
     const loadedSettings = await getSettings();
@@ -59,13 +70,55 @@ export const App: React.FC = () => {
 
     setIsInitializing(false);
 
-    // Background fetch fresh rates
+    // Clean up deprecated rates (GBP, XAG) and fetch fresh rates
+    await cleanupDeprecatedRates();
     fetchLiveRatesMultiSource().catch(console.warn);
   };
 
   useEffect(() => {
     loadSettingsAndInit();
   }, []);
+
+  // Detect Standalone mode and capture beforeinstallprompt
+  useEffect(() => {
+    const checkStandalone = () => {
+      const isStandaloneMode = 
+        (window.navigator as any).standalone === true || 
+        window.matchMedia('(display-mode: standalone)').matches;
+      setIsStandalone(isStandaloneMode);
+    };
+    checkStandalone();
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setIsStandalone(true);
+      setIsInstallModalOpen(false);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleTriggerInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsStandalone(true);
+      setIsInstallModalOpen(false);
+    }
+    setDeferredPrompt(null);
+  };
 
   // Handle visibility change and auto-lock
   useEffect(() => {
@@ -139,6 +192,9 @@ export const App: React.FC = () => {
         onLock={handleManualLock}
         onRefreshRates={handleRefreshRates}
         isRefreshingRates={isRefreshingRates}
+        onGoDashboard={() => setActiveTab('dashboard')}
+        onOpenInstallModal={() => setIsInstallModalOpen(true)}
+        isStandalone={isStandalone}
       />
 
       {/* Main Content Area */}
@@ -179,6 +235,7 @@ export const App: React.FC = () => {
             groups={groups}
             accounts={accounts}
             plans={investmentPlans}
+            transactions={transactions}
             hideValues={settings.hideValuesOnScreen}
           />
         )}
@@ -191,12 +248,24 @@ export const App: React.FC = () => {
               setSettings(s);
             }}
             onLock={handleManualLock}
+            onOpenInstallModal={() => setIsInstallModalOpen(true)}
+            isStandalone={isStandalone}
+            deferredPrompt={deferredPrompt}
+            onTriggerInstall={handleTriggerInstall}
           />
         )}
       </main>
 
       {/* Mobile Fixed Bottom Navigation */}
       <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />
+
+      {/* PWA Installation Guide Modal */}
+      <PwaInstallModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+        deferredPrompt={deferredPrompt}
+        onTriggerInstall={handleTriggerInstall}
+      />
     </div>
   );
 };

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Plus, Euro, DollarSign, History, Trash2, Filter, Calendar } from 'lucide-react';
+import { Plus, Euro, DollarSign, History, Trash2, Edit2, Filter, Calendar } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GroupFilterBar } from '../common/GroupFilterBar';
 import { db } from '../../db/db';
-import { formatTRY, formatNumber } from '../../services/portfolioService';
+import { formatTRY, formatNumber, parseUserInputNumber, formatForInput } from '../../services/portfolioService';
 import type { Account, AssetTransaction, MarketRate, Group } from '../../types/finance';
 
 interface CurrencyTrackerProps {
@@ -33,6 +33,11 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
   const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
+  const [historyYearFilter, setHistoryYearFilter] = useState<string>('ALL');
+  const [historyStartDate, setHistoryStartDate] = useState<string>('');
+  const [historyEndDate, setHistoryEndDate] = useState<string>('');
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const itemsPerPage = 10;
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Form State
@@ -42,6 +47,15 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
   const [rateVal, setRateVal] = useState('');
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [note, setNote] = useState('');
+
+  // Edit Transaction Form State
+  const [editingTx, setEditingTx] = useState<AssetTransaction | null>(null);
+  const [editTxType, setEditTxType] = useState<'BUY' | 'SELL'>('BUY');
+  const [editGroupId, setEditGroupId] = useState<string>('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editRateVal, setEditRateVal] = useState('');
+  const [editTxDate, setEditTxDate] = useState('');
+  const [editNote, setEditNote] = useState('');
 
   // Confirm delete dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -71,9 +85,9 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
   const matchingAccountIds = new Set(matchingAccounts.map(a => a.id));
   const assetTxs = transactions.filter(t => matchingAccountIds.has(t.accountId));
 
-  // Dynamic years from all transactions
-  const uniqueYears = Array.from(new Set(assetTxs.map(t => t.year)));
-  const dynamicYears = Array.from(new Set([2024, 2025, 2026, 2027, ...uniqueYears])).sort((a, b) => a - b);
+  // Dynamic years from all transactions: only include years with transactions!
+  const uniqueYears = Array.from(new Set(assetTxs.map(t => t.year))).sort((a, b) => a - b);
+  const dynamicYears = uniqueYears;
 
   // Filter groups: only show groups having this currency with at least one transaction
   const groupsWithCurrency = groups.filter(g => {
@@ -84,20 +98,23 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
   });
 
   // Calculate Net Holdings
-  let totalNetUnits = 0;
-  let totalCostTRY = 0;
+  let totalBoughtUnits = 0;
+  let totalBoughtCostTRY = 0;
+  let totalSoldUnits = 0;
+
   for (const t of assetTxs) {
     if (t.type === 'BUY') {
-      totalNetUnits += t.quantity;
-      totalCostTRY += t.totalAmountTRY;
+      totalBoughtUnits += t.quantity;
+      totalBoughtCostTRY += t.totalAmountTRY;
     } else {
-      totalNetUnits -= t.quantity;
-      totalCostTRY -= t.totalAmountTRY;
+      totalSoldUnits += t.quantity;
     }
   }
 
+  const totalNetUnits = Math.max(0, totalBoughtUnits - totalSoldUnits);
+  const avgCostPerUnit = totalBoughtUnits > 0 ? totalBoughtCostTRY / totalBoughtUnits : 0;
+  const totalCostTRY = totalNetUnits * avgCostPerUnit;
   const currentTRYValue = totalNetUnits * currentLiveRate;
-  const avgCostPerUnit = totalNetUnits > 0 ? Math.max(0, totalCostTRY / totalNetUnits) : 0;
   const profitLossTRY = currentTRYValue - totalCostTRY;
   const profitLossPct = totalCostTRY > 0 ? (profitLossTRY / totalCostTRY) * 100 : 0;
 
@@ -151,8 +168,12 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
     return { month, bought, sold, net, cost, avgRate };
   });
 
-  // Date Filter logic for History
+  // Date Range, Year & Custom Filter logic for History
   const filteredTxs = assetTxs.filter((tx) => {
+    if (historyYearFilter !== 'ALL' && tx.year !== Number(historyYearFilter)) return false;
+    if (historyStartDate && tx.date < historyStartDate) return false;
+    if (historyEndDate && tx.date > historyEndDate) return false;
+
     if (historyFilter === 'ALL') return true;
     const txTime = new Date(tx.date).getTime();
     const now = Date.now();
@@ -164,12 +185,20 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
     if (historyFilter === 'THIS_YEAR') return tx.year === 2026;
     if (historyFilter === 'PREV_YEAR') return tx.year === 2025;
     return true;
+  }).sort((a, b) => {
+    const dateDiff = b.date.localeCompare(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    return (b.createdAt || '').localeCompare(a.createdAt || '');
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredTxs.length / itemsPerPage));
+  const currentPage = Math.min(historyPage, totalPages);
+  const paginatedTxs = filteredTxs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleOpenAddModal = () => {
     const targetGrp = selectedGroupId !== 'ALL' ? selectedGroupId : (groups[0]?.id || '');
     setTargetGroupId(targetGrp);
-    setRateVal(currentLiveRate.toString());
+    setRateVal(formatForInput(currentLiveRate));
     setAmount('');
     setNote('');
     setIsModalOpen(true);
@@ -195,9 +224,9 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
       targetAcc = newAcc;
     }
 
-    const q = parseFloat(amount.replace(',', '.'));
-    const r = parseFloat(rateVal.replace(',', '.')) || currentLiveRate;
-    if (isNaN(q) || q <= 0) return;
+    const q = parseUserInputNumber(amount);
+    const r = parseUserInputNumber(rateVal) || currentLiveRate;
+    if (q <= 0) return;
 
     const dateObj = new Date(txDate);
     const year = dateObj.getFullYear();
@@ -224,6 +253,63 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
     setAmount('');
     setRateVal('');
     setNote('');
+  };
+
+  const handleOpenEditTx = (tx: AssetTransaction) => {
+    const defaultGid = tx.groupId || accounts.find(a => a.id === tx.accountId)?.groupId || groups[0]?.id || '';
+    setEditingTx(tx);
+    setEditTxType(tx.type);
+    setEditGroupId(defaultGid);
+    setEditAmount(formatForInput(tx.quantity));
+    setEditRateVal(formatForInput(tx.unitPriceTRY));
+    setEditTxDate(tx.date);
+    setEditNote(tx.note || '');
+  };
+
+  const handleSaveEditTransaction = async () => {
+    if (!editingTx) return;
+
+    let targetAcc = accounts.find(a => a.groupId === editGroupId && a.subType === 'CURRENCY' && a.symbol === selectedCurrency);
+    if (!targetAcc) {
+      const groupObj = groups.find(g => g.id === editGroupId);
+      const newAcc: Account = {
+        id: `acc-curr-${Date.now()}`,
+        groupId: editGroupId,
+        name: `${groupObj?.name || ''} ${selectedCurrency} Hesabı`.trim(),
+        type: 'ASSET',
+        subType: 'CURRENCY',
+        symbol: selectedCurrency,
+        currency: selectedCurrency,
+        order: accounts.length + 1,
+        createdAt: new Date().toISOString()
+      };
+      await db.accounts.add(newAcc);
+      targetAcc = newAcc;
+    }
+
+    const q = parseUserInputNumber(editAmount);
+    const r = parseUserInputNumber(editRateVal) || currentLiveRate;
+    if (q <= 0) return;
+
+    const dateObj = new Date(editTxDate);
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth() + 1;
+    const totalTRY = q * r;
+
+    await db.transactions.update(editingTx.id, {
+      accountId: targetAcc.id,
+      groupId: editGroupId,
+      date: editTxDate,
+      year,
+      month,
+      type: editTxType,
+      quantity: q,
+      totalAmountTRY: totalTRY,
+      unitPriceTRY: r,
+      note: editNote.trim() || undefined
+    });
+
+    setEditingTx(null);
   };
 
   const handleDeleteTx = (id: string) => {
@@ -276,7 +362,7 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
         groups={groupsWithCurrency.length > 0 ? groupsWithCurrency : groups}
         selectedGroupId={selectedGroupId}
         onSelectGroup={setSelectedGroupId}
-        title="Hesap Grubu"
+        title="Hesap"
       />
 
       {/* METRIC HEADER */}
@@ -346,49 +432,59 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 font-mono">
-            {dynamicYears.map((year) => {
-              const yearTotal = getYearTotal(year);
-              return (
-                <tr key={year} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="py-2 px-3 text-slate-300 font-sans font-bold sticky left-0 z-10 bg-slate-900/95 border-r border-white/10">
-                    {year}
+            {dynamicYears.length === 0 ? (
+              <tr>
+                <td colSpan={14} className="py-8 text-center text-slate-400 font-sans text-xs">
+                  Bu döviz türünde henüz hareket kaydı bulunmuyor. Yeni işlem eklediğinizde yıllık hareket matrisi burada oluşacaktır.
+                </td>
+              </tr>
+            ) : (
+              <>
+                {dynamicYears.map((year) => {
+                  const yearTotal = getYearTotal(year);
+                  return (
+                    <tr key={year} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="py-2 px-3 text-slate-300 font-sans font-bold sticky left-0 z-10 bg-slate-900/95 border-r border-white/10">
+                        {year}
+                      </td>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                        const val = getMatrixCell(year, month);
+                        return (
+                          <td
+                            key={month}
+                            className={`py-2 px-2 text-right ${
+                              val > 0 ? 'text-slate-200' : val < 0 ? 'text-rose-400 font-bold' : 'text-slate-600'
+                            }`}
+                          >
+                            {val !== 0 ? formatNumber(val, 2, hideValues) : '-'}
+                          </td>
+                        );
+                      })}
+                      <td className={`py-2 px-3 text-right font-bold bg-slate-900/90 ${yearTotal < 0 ? 'text-rose-400' : 'text-indigo-300'}`}>
+                        {yearTotal !== 0 ? formatNumber(yearTotal, 2, hideValues) : '0,00'}
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                <tr className="bg-slate-950/95 font-bold text-indigo-300 border-t-2 border-white/10">
+                  <td className="py-2.5 px-3 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
+                    Genel Toplam
                   </td>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-                    const val = getMatrixCell(year, month);
+                    const monthTotal = getMonthTotalAcrossYears(month);
                     return (
-                      <td
-                        key={month}
-                        className={`py-2 px-2 text-right ${
-                          val > 0 ? 'text-slate-200' : val < 0 ? 'text-rose-400 font-bold' : 'text-slate-600'
-                        }`}
-                      >
-                        {val !== 0 ? formatNumber(val, 2, hideValues) : '-'}
+                      <td key={month} className={`py-2.5 px-2 text-right ${monthTotal < 0 ? 'text-rose-400' : 'text-slate-200'}`}>
+                        {monthTotal !== 0 ? formatNumber(monthTotal, 2, hideValues) : '0,00'}
                       </td>
                     );
                   })}
-                  <td className={`py-2 px-3 text-right font-bold bg-slate-900/90 ${yearTotal < 0 ? 'text-rose-400' : 'text-indigo-300'}`}>
-                    {yearTotal !== 0 ? formatNumber(yearTotal, 2, hideValues) : '0,00'}
+                  <td className="py-2.5 px-3 text-right font-extrabold text-indigo-400 text-sm bg-slate-950">
+                    {formatNumber(totalNetUnits, 2, hideValues)}
                   </td>
                 </tr>
-              );
-            })}
-
-            <tr className="bg-slate-950/95 font-bold text-indigo-300 border-t-2 border-white/10">
-              <td className="py-2.5 px-3 sticky left-0 z-10 bg-slate-950/95 border-r border-white/10">
-                Genel Toplam
-              </td>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-                const monthTotal = getMonthTotalAcrossYears(month);
-                return (
-                  <td key={month} className={`py-2.5 px-2 text-right ${monthTotal < 0 ? 'text-rose-400' : 'text-slate-200'}`}>
-                    {monthTotal !== 0 ? formatNumber(monthTotal, 2, hideValues) : '0,00'}
-                  </td>
-                );
-              })}
-              <td className="py-2.5 px-3 text-right font-extrabold text-indigo-400 text-sm bg-slate-950">
-                {formatNumber(totalNetUnits, 2, hideValues)}
-              </td>
-            </tr>
+              </>
+            )}
           </tbody>
         </table>
       </div>
@@ -496,15 +592,16 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
         </table>
       </div>
 
-      {/* RECENT MOVEMENTS WITH DATE FILTER */}
+      {/* RECENT MOVEMENTS WITH DATE FILTER & PAGINATION */}
       <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
             <History className="w-3.5 h-3.5 text-indigo-400" />
             <span>{selectedCurrency} Hareket Geçmişi</span>
+            <span className="text-[10px] text-slate-400 font-normal">({filteredTxs.length} İşlem)</span>
           </h4>
 
-          {/* Date Filter Chips */}
+          {/* Quick Filter Chips */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
             <Filter className="w-3 h-3 text-slate-500 mr-1 flex-shrink-0" />
             {[
@@ -512,12 +609,13 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
               { id: '1M' as const, label: 'Son 1 Ay' },
               { id: '3M' as const, label: 'Son 3 Ay' },
               { id: '6M' as const, label: 'Son 6 Ay' },
-              { id: 'THIS_YEAR' as const, label: '2026' },
-              { id: 'PREV_YEAR' as const, label: '2025' },
             ].map((f) => (
               <button
                 key={f.id}
-                onClick={() => setHistoryFilter(f.id)}
+                onClick={() => {
+                  setHistoryFilter(f.id);
+                  setHistoryPage(1);
+                }}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors flex-shrink-0 ${
                   historyFilter === f.id
                     ? 'bg-indigo-500 text-white font-bold'
@@ -530,11 +628,73 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
           </div>
         </div>
 
+        {/* Extended Filter Bar: Year & Custom Date Range */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5 text-xs">
+          {/* Year Filter */}
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-slate-400">Yıl:</span>
+            <select
+              value={historyYearFilter}
+              onChange={(e) => {
+                setHistoryYearFilter(e.target.value);
+                setHistoryPage(1);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-indigo-400 cursor-pointer"
+            >
+              <option value="ALL">Tüm Yıllar</option>
+              {uniqueYears.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Custom Date Range */}
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-slate-400">Tarih:</span>
+            <input
+              type="date"
+              value={historyStartDate}
+              onChange={(e) => {
+                setHistoryStartDate(e.target.value);
+                setHistoryPage(1);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-950 border border-white/10 text-white text-[11px] focus:outline-none"
+              title="Başlangıç Tarihi"
+            />
+            <span className="text-slate-500">-</span>
+            <input
+              type="date"
+              value={historyEndDate}
+              onChange={(e) => {
+                setHistoryEndDate(e.target.value);
+                setHistoryPage(1);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-950 border border-white/10 text-white text-[11px] focus:outline-none"
+              title="Bitiş Tarihi"
+            />
+          </div>
+
+          {(historyYearFilter !== 'ALL' || historyStartDate || historyEndDate || historyFilter !== 'ALL') && (
+            <button
+              onClick={() => {
+                setHistoryFilter('ALL');
+                setHistoryYearFilter('ALL');
+                setHistoryStartDate('');
+                setHistoryEndDate('');
+                setHistoryPage(1);
+              }}
+              className="text-[10px] text-indigo-400 hover:underline ml-auto"
+            >
+              Filtreleri Temizle
+            </button>
+          )}
+        </div>
+
         {filteredTxs.length === 0 ? (
           <p className="text-xs text-slate-400 py-3 text-center">Bu filtreye uygun işlem kaydı bulunamadı.</p>
         ) : (
-          <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-            {filteredTxs.map((tx) => {
+          <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+            {paginatedTxs.map((tx) => {
               const acc = accounts.find(a => a.id === tx.accountId);
               const grp = groups.find(g => g.id === acc?.groupId || g.id === tx.groupId);
 
@@ -577,6 +737,13 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
                       <span className="text-[10px] text-slate-500">{tx.date}</span>
                     </div>
                     <button
+                      onClick={() => handleOpenEditTx(tx)}
+                      className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
+                      title="İşlemi Düzenle"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => handleDeleteTx(tx.id)}
                       className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
                       title="İşlemi Sil"
@@ -587,6 +754,29 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs text-slate-400">
+            <button
+              onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-white font-medium transition-colors"
+            >
+              Önceki
+            </button>
+            <span className="font-mono text-[11px]">
+              Sayfa {currentPage} / {totalPages} ({filteredTxs.length} işlem)
+            </span>
+            <button
+              onClick={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-white font-medium transition-colors"
+            >
+              Sonraki
+            </button>
           </div>
         )}
       </div>
@@ -621,17 +811,21 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">
-              Hangi Gruba Ait?
+              Hangi Hesaba Ait?
             </label>
-            <select
-              value={targetGroupId}
-              onChange={(e) => setTargetGroupId(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
-            >
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
+            {groups.length === 0 ? (
+              <p className="text-xs text-amber-400">Henüz kayıtlı bir hesap bulunmuyor. Önce yukarıdan 'Yeni Hesap' eklemelisiniz.</p>
+            ) : (
+              <select
+                value={targetGroupId}
+                onChange={(e) => setTargetGroupId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+              >
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -662,25 +856,24 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="min-w-0">
               <label className="block text-xs font-medium text-slate-400 mb-1">İşlem Tarihi</label>
               <input
                 type="date"
                 value={txDate}
                 onChange={(e) => setTxDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
               />
             </div>
 
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-medium text-slate-400 mb-1">Açıklama / Not</label>
               <input
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Örn: Tatil birikimi"
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
               />
             </div>
           </div>
@@ -697,6 +890,126 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
               className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400"
             >
               İşlemi Kaydet
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* EDIT TRANSACTION MODAL */}
+      <Modal
+        isOpen={!!editingTx}
+        onClose={() => setEditingTx(null)}
+        title={`${selectedCurrency === 'EUR' ? 'Euro' : 'Dolar'} İşlemini Düzenle`}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-950 border border-white/10">
+            <button
+              type="button"
+              onClick={() => setEditTxType('BUY')}
+              className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                editTxType === 'BUY' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'
+              }`}
+            >
+              Alış (+)
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditTxType('SELL')}
+              className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                editTxType === 'SELL' ? 'bg-rose-500 text-white' : 'text-slate-400'
+              }`}
+            >
+              Satış / Bozdurma (-)
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Hangi Hesaba Ait?
+            </label>
+            <select
+              value={editGroupId}
+              onChange={(e) => setEditGroupId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+            >
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                Miktar ({selectedCurrency})
+              </label>
+              <input
+                type="text"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                placeholder="Örn: 500"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                Kur (TL)
+              </label>
+              <input
+                type="text"
+                value={editRateVal}
+                onChange={(e) => setEditRateVal(e.target.value)}
+                placeholder={`Örn: ${currentLiveRate}`}
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-amber-400"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-slate-400 mb-1">İşlem Tarihi</label>
+              <input
+                type="date"
+                value={editTxDate}
+                onChange={(e) => setEditTxDate(e.target.value)}
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-slate-400 mb-1">Açıklama / Not</label>
+              <input
+                type="text"
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+              />
+            </div>
+          </div>
+
+          {/* Total TRY preview */}
+          {parseUserInputNumber(editAmount) > 0 && parseUserInputNumber(editRateVal) > 0 && (
+            <div className="p-2.5 rounded-xl bg-slate-950/60 border border-white/5 flex items-center justify-between text-xs">
+              <span className="text-slate-400">Toplam Karşılık:</span>
+              <span className="font-bold font-mono text-amber-400">
+                {formatTRY(parseUserInputNumber(editAmount) * parseUserInputNumber(editRateVal))}
+              </span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => setEditingTx(null)}
+              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Vazgeç
+            </button>
+            <button
+              onClick={handleSaveEditTransaction}
+              className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400"
+            >
+              Değişiklikleri Kaydet
             </button>
           </div>
         </div>

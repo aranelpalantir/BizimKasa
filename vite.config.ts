@@ -10,15 +10,17 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
-        name: 'BizimKasa - Aile ve Bütçe Takibi',
-        short_name: 'BizimKasa',
-        description: 'Çift ve Aile Bütçesi, Altın, Döviz, Fon ve Portföy Takip Uygulaması',
-        theme_color: '#090d16',
-        background_color: '#090d16',
+        name: 'Bizim Kasa - Ortak Bütçe & Varlık Portföyü',
+        short_name: 'Bizim Kasa',
+        description: 'Ortak Bütçe, Altın, Döviz, Fon ve Varlık Portföy Takip Uygulaması',
+        theme_color: '#080c14',
+        background_color: '#080c14',
         display: 'standalone',
         orientation: 'portrait',
+        start_url: '/',
+        scope: '/',
         icons: [
           {
             src: 'pwa-192x192.png',
@@ -33,7 +35,9 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        cleanupOutdatedCaches: true,
+        navigateFallback: null,
       }
     })
   ],

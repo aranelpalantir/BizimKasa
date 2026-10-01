@@ -49,6 +49,9 @@ export const Modal: React.FC<ModalProps> = ({
       {/* Modal Dialog Content */}
       <div 
         ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={`relative w-full ${maxWidth} bg-slate-900 border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col z-10 animate-in fade-in zoom-in-95 duration-200`}
       >
         {/* Header */}

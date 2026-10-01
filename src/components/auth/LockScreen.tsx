@@ -36,19 +36,29 @@ export const LockScreen: React.FC<LockScreenProps> = ({ settings, onUnlock }) =>
     }
   };
 
+  const maxDigits = settings.pinLength || 6;
+  const dotsCount = settings.pinLength || 4;
+
   const handleKeyPress = async (digit: string) => {
-    if (pin.length >= 6) return;
-    const newPin = pin + digit;
+    let currentPin = pin;
+    if (shake || currentPin.length >= maxDigits) {
+      currentPin = '';
+      setShake(false);
+    }
+    const newPin = currentPin + digit;
     setPin(newPin);
     setError(null);
 
-    // If matches standard 4 or 6 pin lengths
-    if (newPin.length >= 4 && settings.pinHash) {
-      const isValid = await verifyPin(newPin, settings.pinHash);
-      if (isValid) {
-        onUnlock();
-      } else if (newPin.length === 6) {
-        // Trigger error
+    if (settings.pinHash) {
+      if (newPin.length >= 4) {
+        const isValid = await verifyPin(newPin, settings.pinHash);
+        if (isValid) {
+          onUnlock();
+          return;
+        }
+      }
+
+      if (newPin.length === maxDigits) {
         setError('Hatalı PIN kodu!');
         setShake(true);
         setTimeout(() => {
@@ -83,7 +93,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ settings, onUnlock }) =>
       {/* PIN Dots Display */}
       <div className="flex flex-col items-center my-6">
         <div className={`flex items-center gap-3 mb-3 ${shake ? 'animate-bounce' : ''}`}>
-          {[0, 1, 2, 3, 4, 5].map((idx) => (
+          {Array.from({ length: dotsCount }).map((_, idx) => (
             <div
               key={idx}
               className={`w-3.5 h-3.5 rounded-full transition-all duration-200 border ${

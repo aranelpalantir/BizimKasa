@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Coins, Euro, LineChart, FileSpreadsheet } from 'lucide-react';
+import { Coins, Euro, LineChart, FileSpreadsheet, Plus } from 'lucide-react';
 import { GoldTracker } from './GoldTracker';
 import { CurrencyTracker } from './CurrencyTracker';
 import { FundsTracker } from './FundsTracker';
 import { ImportModal } from './ImportModal';
+import { AddAccountModal } from '../common/AddAccountModal';
 import type { Group, Account, AssetTransaction, MarketRate } from '../../types/finance';
 
 interface AssetDashboardProps {
@@ -23,6 +24,7 @@ export const AssetDashboard: React.FC<AssetDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'gold' | 'currency' | 'funds'>('gold');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -38,7 +40,7 @@ export const AssetDashboard: React.FC<AssetDashboardProps> = ({
             }`}
           >
             <Coins className="w-4 h-4" />
-            <span>Altın & Emtia</span>
+            <span>Altın</span>
           </button>
 
           <button
@@ -66,13 +68,23 @@ export const AssetDashboard: React.FC<AssetDashboardProps> = ({
           </button>
         </div>
 
-        <button
-          onClick={() => setIsImportModalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-white/10 transition-colors shadow-sm active:scale-95"
-        >
-          <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-          <span>Excel / CSV İçe Aktar</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsAddAccountModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-white/10 transition-colors shadow-sm active:scale-95"
+          >
+            <Plus className="w-4 h-4 text-blue-400" />
+            <span>Yeni Hesap</span>
+          </button>
+
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-white/10 transition-colors shadow-sm active:scale-95"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Excel / CSV İçe Aktar</span>
+          </button>
+        </div>
       </div>
 
       {/* Tab Panels */}
@@ -112,6 +124,13 @@ export const AssetDashboard: React.FC<AssetDashboardProps> = ({
         onClose={() => setIsImportModalOpen(false)}
         groups={groups}
         accounts={accounts}
+        defaultCategory={activeTab}
+      />
+
+      {/* Add Account Modal */}
+      <AddAccountModal
+        isOpen={isAddAccountModalOpen}
+        onClose={() => setIsAddAccountModalOpen(false)}
       />
     </div>
   );

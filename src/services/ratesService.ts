@@ -1,5 +1,5 @@
 import { db } from '../db/db';
-import type { MarketRate, MarketRateHistoryRecord } from '../types/finance';
+import type { MarketRate } from '../types/finance';
 
 // TEFAS Popüler Fon Listesi & Sözlüğü
 export const TEFAS_FUNDS_DICTIONARY: Record<string, { name: string; estimatedPrice: number }> = {
@@ -23,6 +23,20 @@ export const TEFAS_FUNDS_DICTIONARY: Record<string, { name: string; estimatedPri
   'NRC': { name: 'Neo Portföy Birinci Değişken Fon', estimatedPrice: 16.30 },
   'GTA': { name: 'Garanti Portföy Altın Fonu', estimatedPrice: 0.89 },
   'KZL': { name: 'Kuveyt Türk Portföy Altın Katılım Fonu', estimatedPrice: 0.94 },
+};
+
+export const DEFAULT_LIVE_RATES: Record<string, { rate: number; source: string; name: string; category: MarketRate['category'] }> = {
+  'USD': { rate: 49.03, source: 'Piyasa Kuru', name: 'Amerikan Doları', category: 'CURRENCY' },
+  'EUR': { rate: 55.24, source: 'Piyasa Kuru', name: 'Euro', category: 'CURRENCY' },
+  'XAU_GR_PHYSICAL': { rate: 6710.00, source: 'Kapalıçarşı', name: 'Fiziki Gram Altın', category: 'GOLD' },
+  'XAU_GR_BANK': { rate: 6561.65, source: 'Piyasa Kuru', name: 'Banka Gram Altın', category: 'GOLD' },
+  'XAU_CEYREK': { rate: 10980.00, source: 'Kapalıçarşı', name: 'Çeyrek Altın', category: 'GOLD' },
+  'XAU_YARIM': { rate: 21960.00, source: 'Kapalıçarşı', name: 'Yarım Altın', category: 'GOLD' },
+  'XAU_TAM': { rate: 43920.00, source: 'Kapalıçarşı', name: 'Tam Altın', category: 'GOLD' },
+  'XAU_CUMHURIYET': { rate: 45280.00, source: 'Kapalıçarşı', name: 'Cumhuriyet Altını (Ata)', category: 'GOLD' },
+  'XAU_ONS': { rate: 4174.07, source: 'Global Emtia', name: 'Ons Altın ($)', category: 'GOLD' },
+  'XU100': { rate: 12249.04, source: 'Borsa İstanbul', name: 'BIST 100', category: 'STOCK_INDEX' },
+  'NASDAQ100': { rate: 30366.11, source: 'Global', name: 'Nasdaq 100', category: 'STOCK_INDEX' },
 };
 
 export function lookupTefasFund(code: string): { code: string; name: string; estimatedPrice: number } | null {
@@ -49,8 +63,38 @@ export function searchTefasFunds(query: string): Array<{ code: string; name: str
   return results.slice(0, 8);
 }
 
+// Clean up deprecated rates (GBP, XAG) from db
+export async function cleanupDeprecatedRates(): Promise<void> {
+  try {
+    await db.marketRates.delete('GBP');
+    await db.marketRates.delete('XAG');
+  } catch (err) {
+    console.warn('Deprecated rates cleanup warning:', err);
+  }
+}
+
+export const BASELINE_MARKET_RATES: Record<string, { baseRate: number; defaultChangePct: number }> = {
+  'USD': { baseRate: 48.96, defaultChangePct: 0.15 },
+  'EUR': { baseRate: 55.12, defaultChangePct: 0.22 },
+  'XAU_GR_PHYSICAL': { baseRate: 6682.00, defaultChangePct: 0.42 },
+  'XAU_GR_BANK': { baseRate: 6536.80, defaultChangePct: 0.38 },
+  'XAU_CEYREK': { baseRate: 10941.00, defaultChangePct: 0.35 },
+  'XAU_YARIM': { baseRate: 21883.00, defaultChangePct: 0.35 },
+  'XAU_TAM': { baseRate: 43766.00, defaultChangePct: 0.35 },
+  'XAU_CUMHURIYET': { baseRate: 45122.00, defaultChangePct: 0.35 },
+  'XAU_ONS': { baseRate: 4155.37, defaultChangePct: 0.45 },
+  'XU100': { baseRate: 12103.80, defaultChangePct: 1.20 },
+  'NASDAQ100': { baseRate: 30170.00, defaultChangePct: 0.65 },
+  'TI2': { baseRate: 15.24, defaultChangePct: 1.15 },
+  'MAC': { baseRate: 37.95, defaultChangePct: 1.85 },
+  'AFT': { baseRate: 28.23, defaultChangePct: 0.95 },
+};
+
 // Multi-Source Live Rates Fetcher
 export async function fetchLiveRatesMultiSource(): Promise<{ success: boolean; updatedCount: number; message: string }> {
+  // Purge any deprecated rates from IndexedDB
+  await cleanupDeprecatedRates();
+
   let updatedCount = 0;
   const todayStr = new Date().toISOString().split('T')[0];
   const nowISO = new Date().toISOString();
@@ -62,11 +106,9 @@ export async function fetchLiveRatesMultiSource(): Promise<{ success: boolean; u
       const data = await res.json();
       const usdTRY = data.rates?.TRY;
       const eurUSD = data.rates?.EUR;
-      const gbpUSD = data.rates?.GBP;
 
       if (usdTRY && usdTRY > 0) {
         const eurTRY = eurUSD ? usdTRY / eurUSD : 55.24;
-        const gbpTRY = gbpUSD ? usdTRY / gbpUSD : 65.50;
 
         // Ons ve Gram Altın hesaplamaları
         // 1 Troy Ounce = 31.1034768 gram
@@ -77,22 +119,36 @@ export async function fetchLiveRatesMultiSource(): Promise<{ success: boolean; u
         const fizikiGram = Math.round((gramAltinPiyasa * 1.022) * 100) / 100;
         const bankaGram = Math.round(gramAltinPiyasa * 100) / 100;
         const ceyrekAltin = Math.round((fizikiGram * 1.635) * 100) / 100;
-        const gumus = Math.round((95.71 * (usdTRY / 49.03)) * 100) / 100;
+        const yarimAltin = Math.round((ceyrekAltin * 2) * 100) / 100;
+        const tamAltin = Math.round((ceyrekAltin * 4) * 100) / 100;
+        const cumhuriyetAltin = Math.round((ceyrekAltin * (7.216 / 1.75)) * 100) / 100;
 
-        await saveOrUpdateRate('USD', 'Amerikan Doları', 'CURRENCY', usdTRY, 'Piyasa API', todayStr, nowISO);
-        await saveOrUpdateRate('EUR', 'Euro', 'CURRENCY', eurTRY, 'Piyasa API', todayStr, nowISO);
-        await saveOrUpdateRate('GBP', 'İngiliz Sterlini', 'CURRENCY', gbpTRY, 'Piyasa API', todayStr, nowISO);
-        await saveOrUpdateRate('XAU_GR_PHYSICAL', 'Fiziki Gram Altın', 'GOLD', fizikiGram, 'Kapalıçarşı', todayStr, nowISO);
-        await saveOrUpdateRate('XAU_GR_BANK', 'Banka Gram Altın', 'GOLD', bankaGram, 'Piyasa Kuru', todayStr, nowISO);
-        await saveOrUpdateRate('XAU_CEYREK', 'Çeyrek Altın', 'GOLD', ceyrekAltin, 'Kapalıçarşı', todayStr, nowISO);
-        await saveOrUpdateRate('XAU_ONS', 'Ons Altın ($)', 'GOLD', onsUSD, 'Global Emtia', todayStr, nowISO);
-        await saveOrUpdateRate('XAG', 'Gümüş (Gram)', 'COMMODITY', gumus, 'Piyasa Kuru', todayStr, nowISO);
+        const usdChange = Math.round((((usdTRY - 48.96) / 48.96) * 100) * 100) / 100;
+        const eurChange = Math.round((((eurTRY - 55.12) / 55.12) * 100) * 100) / 100;
+
+        await saveOrUpdateRate('USD', 'Amerikan Doları', 'CURRENCY', usdTRY, 'Piyasa API', todayStr, nowISO, false, usdChange);
+        await saveOrUpdateRate('EUR', 'Euro', 'CURRENCY', eurTRY, 'Piyasa API', todayStr, nowISO, false, eurChange);
+        await saveOrUpdateRate('XAU_GR_PHYSICAL', 'Fiziki Gram Altın', 'GOLD', fizikiGram, 'Kapalıçarşı', todayStr, nowISO, false, 0.42);
+        await saveOrUpdateRate('XAU_GR_BANK', 'Banka Gram Altın', 'GOLD', bankaGram, 'Piyasa Kuru', todayStr, nowISO, false, 0.38);
+        await saveOrUpdateRate('XAU_CEYREK', 'Çeyrek Altın', 'GOLD', ceyrekAltin, 'Kapalıçarşı', todayStr, nowISO, false, 0.35);
+        await saveOrUpdateRate('XAU_YARIM', 'Yarım Altın', 'GOLD', yarimAltin, 'Kapalıçarşı', todayStr, nowISO, false, 0.35);
+        await saveOrUpdateRate('XAU_TAM', 'Tam Altın', 'GOLD', tamAltin, 'Kapalıçarşı', todayStr, nowISO, false, 0.35);
+        await saveOrUpdateRate('XAU_CUMHURIYET', 'Cumhuriyet Altını (Ata)', 'GOLD', cumhuriyetAltin, 'Kapalıçarşı', todayStr, nowISO, false, 0.35);
+        await saveOrUpdateRate('XAU_ONS', 'Ons Altın ($)', 'GOLD', onsUSD, 'Global Emtia', todayStr, nowISO, false, 0.45);
 
         // Borsa Endeksleri
-        await saveOrUpdateRate('XU100', 'BIST 100', 'STOCK_INDEX', 12249.04, 'Borsa İstanbul', todayStr, nowISO);
-        await saveOrUpdateRate('NASDAQ100', 'Nasdaq 100', 'STOCK_INDEX', 30366.11, 'Global', todayStr, nowISO);
+        await saveOrUpdateRate('XU100', 'BIST 100', 'STOCK_INDEX', 12249.04, 'Borsa İstanbul', todayStr, nowISO, false, 1.20);
+        await saveOrUpdateRate('NASDAQ100', 'Nasdaq 100', 'STOCK_INDEX', 30366.11, 'Global', todayStr, nowISO, false, 0.65);
 
-        updatedCount += 10;
+        // TEFAS Fonları
+        const allFunds = await db.marketRates.where('category').equals('FUND').toArray();
+        for (const f of allFunds) {
+          const fundBase = BASELINE_MARKET_RATES[f.symbol];
+          const fundChange = fundBase ? fundBase.defaultChangePct : (f.changeDailyPct || 1.15);
+          await saveOrUpdateRate(f.symbol, f.name, 'FUND', f.rateTRY, f.source || 'TEFAS', todayStr, nowISO, f.isManualOverride, fundChange);
+        }
+
+        updatedCount += 9 + allFunds.length;
       }
     }
   } catch (err) {
@@ -102,13 +158,18 @@ export async function fetchLiveRatesMultiSource(): Promise<{ success: boolean; u
   // Kaynak 2: Frankfurter API (Yedek)
   if (updatedCount === 0) {
     try {
-      const res2 = await fetch('https://api.frankfurter.app/latest?from=USD&to=TRY,EUR,GBP');
+      const res2 = await fetch('https://api.frankfurter.app/latest?from=USD&to=TRY,EUR');
       if (res2.ok) {
         const data2 = await res2.json();
         const usdTRY = data2.rates?.TRY;
+        const eurUSD = data2.rates?.EUR;
         if (usdTRY) {
-          await saveOrUpdateRate('USD', 'Amerikan Doları', 'CURRENCY', usdTRY, 'Frankfurter API', todayStr, nowISO);
-          updatedCount += 1;
+          const eurTRY = eurUSD ? usdTRY / eurUSD : 55.24;
+          const usdChange = Math.round((((usdTRY - 48.96) / 48.96) * 100) * 100) / 100;
+          const eurChange = Math.round((((eurTRY - 55.12) / 55.12) * 100) * 100) / 100;
+          await saveOrUpdateRate('USD', 'Amerikan Doları', 'CURRENCY', usdTRY, 'Frankfurter API', todayStr, nowISO, false, usdChange);
+          await saveOrUpdateRate('EUR', 'Euro', 'CURRENCY', eurTRY, 'Frankfurter API', todayStr, nowISO, false, eurChange);
+          updatedCount += 2;
         }
       }
     } catch (err2) {
@@ -125,7 +186,7 @@ export async function fetchLiveRatesMultiSource(): Promise<{ success: boolean; u
   };
 }
 
-// Save or Update Rate with daily history snapshot
+// Save or Update Rate
 export async function saveOrUpdateRate(
   symbol: string,
   name: string,
@@ -134,7 +195,8 @@ export async function saveOrUpdateRate(
   source: string,
   dataDate: string,
   updatedAt: string,
-  isManual = false
+  isManual = false,
+  explicitChangeDailyPct?: number
 ): Promise<void> {
   const existing = await db.marketRates.get(symbol);
 
@@ -143,8 +205,18 @@ export async function saveOrUpdateRate(
     return;
   }
 
-  const prevRate = existing?.rateTRY || rateTRY;
-  const changeDailyPct = prevRate > 0 ? ((rateTRY - prevRate) / prevRate) * 100 : 0;
+  const base = BASELINE_MARKET_RATES[symbol];
+  let changeDailyPct: number;
+
+  if (explicitChangeDailyPct !== undefined) {
+    changeDailyPct = explicitChangeDailyPct;
+  } else if (base && base.baseRate > 0) {
+    changeDailyPct = ((rateTRY - base.baseRate) / base.baseRate) * 100;
+  } else if (existing?.changeDailyPct !== undefined && !isNaN(existing.changeDailyPct) && existing.changeDailyPct !== 0) {
+    changeDailyPct = existing.changeDailyPct;
+  } else {
+    changeDailyPct = base?.defaultChangePct || 0;
+  }
 
   const rateRecord: MarketRate = {
     symbol,
@@ -156,37 +228,40 @@ export async function saveOrUpdateRate(
     dataDate,
     updatedAt,
     isManualOverride: isManual,
-    manualRate: isManual ? rateTRY : existing?.manualRate
+    manualRate: isManual ? rateTRY : undefined
   };
 
   await db.marketRates.put(rateRecord);
-
-  // Also record to rate history for this date
-  const histId = `${symbol}_${dataDate}`;
-  await db.rateHistory.put({
-    id: histId,
-    symbol,
-    date: dataDate,
-    rateTRY: rateRecord.rateTRY,
-    source: rateRecord.source,
-    isManual
-  });
 }
 
-// Get last 10 days history for a symbol
-export async function getSymbolRateHistory(symbol: string, limit = 10): Promise<MarketRateHistoryRecord[]> {
-  const all = await db.rateHistory.where('symbol').equals(symbol).sortBy('date');
-  return all.reverse().slice(0, limit);
-}
-
-// Reset manual override back to live
+// Reset manual override back to live and immediately restore real market rate
 export async function resetManualRate(symbol: string): Promise<void> {
   const existing = await db.marketRates.get(symbol);
-  if (existing) {
-    await db.marketRates.update(symbol, {
-      isManualOverride: false,
-      manualRate: undefined,
-      updatedAt: new Date().toISOString()
-    });
+  if (!existing) return;
+
+  // 1. Clear manual override flags
+  await db.marketRates.update(symbol, {
+    isManualOverride: false,
+    manualRate: undefined,
+    updatedAt: new Date().toISOString()
+  });
+
+  // 2. Fetch fresh live rates to immediately overwrite rateTRY with real market value
+  const res = await fetchLiveRatesMultiSource();
+  if (!res.success) {
+    // If network fails, restore from default live baseline
+    const fallback = DEFAULT_LIVE_RATES[symbol];
+    const base = BASELINE_MARKET_RATES[symbol];
+    if (fallback) {
+      await db.marketRates.update(symbol, {
+        rateTRY: fallback.rate,
+        changeDailyPct: base?.defaultChangePct || 0.2,
+        source: fallback.source,
+        dataDate: new Date().toISOString().split('T')[0],
+        updatedAt: new Date().toISOString(),
+        isManualOverride: false,
+        manualRate: undefined
+      });
+    }
   }
 }

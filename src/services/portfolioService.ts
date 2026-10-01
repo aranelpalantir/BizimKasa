@@ -172,6 +172,7 @@ export function calculatePortfolioSummary(
     st === 'GOLD_CEYREK' || 
     st === 'GOLD_YARIM' || 
     st === 'GOLD_TAM' ||
+    st === 'GOLD_CUMHURIYET' ||
     st === 'GOLD_GRAM' || 
     st === 'GOLD_PIECE';
 
@@ -208,4 +209,73 @@ export function formatNumber(num: number, decimals = 2, hideValues = false): str
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   }).format(num);
+}
+
+export function formatSmartTRY(val: number, hideValues = false): string {
+  if (hideValues) return '•••••• ₺';
+  const hasDecimals = val % 1 !== 0;
+  return new Intl.NumberFormat('tr-TR', {
+    style: 'currency',
+    currency: 'TRY',
+    minimumFractionDigits: hasDecimals ? 2 : 0,
+    maximumFractionDigits: 2
+  }).format(val);
+}
+
+export function formatSmartNumber(val: number, hideValues = false): string {
+  if (hideValues) return '••••';
+  const hasDecimals = val % 1 !== 0;
+  return new Intl.NumberFormat('tr-TR', {
+    minimumFractionDigits: hasDecimals ? 2 : 0,
+    maximumFractionDigits: 2
+  }).format(val);
+}
+
+export function parseUserInputNumber(input: string): number {
+  if (!input) return 0;
+  let s = input.trim().replace(/[₺$€TL\s]/gi, '');
+  if (!s) return 0;
+
+  // Multiple dots like "1.000.000" or "1.500.000" -> thousand separators
+  const dotCount = (s.match(/\./g) || []).length;
+  if (dotCount > 1) {
+    s = s.replace(/\./g, '');
+    if (s.includes(',')) {
+      s = s.replace(',', '.');
+    }
+    const res = parseFloat(s);
+    return isNaN(res) ? 0 : Math.round(res * 10000) / 10000;
+  }
+
+  // Both dot and comma exist: "1.234,56" vs "1,234.56"
+  if (s.includes('.') && s.includes(',')) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      // Turkish format: 1.234,56 -> 1234.56
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      // English format: 1,234.56 -> 1234.56
+      s = s.replace(/,/g, '');
+    }
+  } else if (s.includes(',')) {
+    // Single comma is decimal separator: "12,45" -> "12.45"
+    s = s.replace(',', '.');
+  } else if (s.includes('.')) {
+    // Only dot exists: e.g. "12.45" vs "1.000"
+    // If exactly 3 digits follow the dot and integer part >= 1 (e.g. "1.000", "25.000", "150.000"),
+    // but not "0.123":
+    const parts = s.split('.');
+    if (parts.length === 2 && parts[1].length === 3 && parts[0].length >= 1 && parts[0] !== '0') {
+      s = parts[0] + parts[1];
+    }
+    // Otherwise "12.45", "12.4", "0.05" remains standard decimal float
+  }
+
+  const result = parseFloat(s);
+  return isNaN(result) ? 0 : Math.round(result * 10000) / 10000;
+}
+
+export function formatForInput(val: number): string {
+  if (val === undefined || val === null || val === 0) return '';
+  if (val % 1 === 0) return val.toString();
+  return val.toString().replace('.', ',');
 }

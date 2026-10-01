@@ -9,30 +9,40 @@ interface PortfolioAllocationChartProps {
 }
 
 export const PortfolioAllocationChart: React.FC<PortfolioAllocationChartProps> = ({ summary, hideValues }) => {
-  // Aggregate by category
-  let goldVal = 0;
-  let currencyVal = 0;
-  let fundVal = 0;
-  let otherVal = 0;
+  // Detailed asset buckets breakdown
+  const buckets: { [key: string]: { name: string; value: number; color: string } } = {
+    'BANK_GOLD': { name: 'Banka Gram Altın', value: 0, color: '#f59e0b' },
+    'PHYS_GOLD': { name: 'Fiziki Gram Altın', value: 0, color: '#d97706' },
+    'CEYREK_GOLD': { name: 'Çeyrek Altın', value: 0, color: '#eab308' },
+    'EUR': { name: 'Euro (EUR)', value: 0, color: '#3b82f6' },
+    'USD': { name: 'Dolar (USD)', value: 0, color: '#6366f1' },
+    'FUND': { name: 'Yatırım Fonları', value: 0, color: '#10b981' },
+    'OTHER': { name: 'Diğer Varlıklar', value: 0, color: '#a855f7' },
+  };
 
   for (const pos of summary.positions) {
-    if (pos.subType === 'GOLD_GRAM' || pos.subType === 'GOLD_PIECE') {
-      goldVal += pos.currentValueTRY;
-    } else if (pos.subType === 'CURRENCY') {
-      currencyVal += pos.currentValueTRY;
-    } else if (pos.subType === 'FUND' || pos.subType === 'STOCK') {
-      fundVal += pos.currentValueTRY;
+    const sym = pos.symbol?.toUpperCase() || '';
+    const nm = pos.name?.toLowerCase() || '';
+    const sub = pos.subType || '';
+
+    if (sub === 'GOLD_GRAM_BANK' || sym === 'XAU_GR_BANK' || (sub === 'GOLD_GRAM' && !sym.includes('FIZIKI') && !nm.includes('fiziki'))) {
+      buckets['BANK_GOLD'].value += pos.currentValueTRY;
+    } else if (sub === 'GOLD_GRAM_PHYSICAL' || sym === 'XAU_GR_PHYSICAL' || nm.includes('fiziki')) {
+      buckets['PHYS_GOLD'].value += pos.currentValueTRY;
+    } else if (sub === 'GOLD_CEYREK' || sub === 'GOLD_PIECE' || sym === 'XAU_CEYREK' || nm.includes('çeyrek') || nm.includes('ceyrek')) {
+      buckets['CEYREK_GOLD'].value += pos.currentValueTRY;
+    } else if (sym === 'EUR' || (sub === 'CURRENCY' && nm.includes('euro'))) {
+      buckets['EUR'].value += pos.currentValueTRY;
+    } else if (sym === 'USD' || (sub === 'CURRENCY' && (nm.includes('dolar') || nm.includes('usd')))) {
+      buckets['USD'].value += pos.currentValueTRY;
+    } else if (sub === 'FUND' || sub === 'STOCK') {
+      buckets['FUND'].value += pos.currentValueTRY;
     } else {
-      otherVal += pos.currentValueTRY;
+      buckets['OTHER'].value += pos.currentValueTRY;
     }
   }
 
-  const chartData = [
-    { name: 'Altın & Emtia', value: goldVal, color: '#fbbf24' },
-    { name: 'Döviz (EUR/USD)', value: currencyVal, color: '#3b82f6' },
-    { name: 'Yatırım Fonları', value: fundVal, color: '#10b981' },
-    { name: 'Diğer / Nakit', value: otherVal, color: '#a855f7' },
-  ].filter(d => d.value > 0);
+  const chartData = Object.values(buckets).filter(d => d.value > 0);
 
   if (chartData.length === 0) {
     return null;
@@ -67,11 +77,14 @@ export const PortfolioAllocationChart: React.FC<PortfolioAllocationChartProps> =
                 formatter={(value: any) => [formatTRY(Number(value) || 0, hideValues), 'Değer']}
                 contentStyle={{
                   backgroundColor: '#0f172a',
-                  borderColor: 'rgba(255,255,255,0.1)',
+                  borderColor: 'rgba(255,255,255,0.15)',
                   borderRadius: '12px',
                   fontSize: '12px',
-                  color: '#fff'
+                  color: '#fff',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
                 }}
+                itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
+                labelStyle={{ color: '#ffffff', fontWeight: 700 }}
               />
             </PieChart>
           </ResponsiveContainer>

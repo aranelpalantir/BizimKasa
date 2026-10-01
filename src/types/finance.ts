@@ -5,7 +5,8 @@ export type AssetSubType =
   | 'GOLD_GRAM_BANK'     // Banka Gram Altın
   | 'GOLD_CEYREK'        // Çeyrek Altın (Fiziki)
   | 'GOLD_YARIM'         // Yarım Altın
-  | 'GOLD_TAM'           // Tam / Cumhuriyet Altını
+  | 'GOLD_TAM'           // Tam Altın (Ziynet - 7.00 gr)
+  | 'GOLD_CUMHURIYET'    // Cumhuriyet Altını (Ata Lira - 7.216 gr)
   | 'CURRENCY'           // Döviz (USD, EUR, GBP)
   | 'FUND'               // TEFAS Yatırım Fonu
   | 'STOCK'              // Hisse Senedi (BIST / Yabancı)
@@ -22,7 +23,7 @@ export type AssetSubType =
 
 export interface Group {
   id: string;
-  name: string;        // "Mert", "Aylin", "Çocuk", "Ortak"
+  name: string;        // "Ana Hesap", "Yatırım Hesabı", "Tasarruf Fonu", "Ortak Kasa"
   color: string;       // HEX code
   order: number;
   createdAt: string;
@@ -30,7 +31,7 @@ export interface Group {
 
 export interface Account {
   id: string;
-  groupId: string;     // Hangi gruba ait olduğu (Mert, Aylin, Çocuk, Ortak)
+  groupId: string;     // Hangi hesaba ait olduğu (Ana Hesap, Yatırım, Ortak vb.)
   name: string;        // "Ziraat Banka Gram Altın", "Kasa Fiziki Gram", "Maaş", vb.
   type: AccountType;
   subType: AssetSubType;
@@ -114,6 +115,7 @@ export interface MonthlyInvestmentPlan {
 
 export interface AppSettings {
   pinHash?: string;
+  pinLength?: number;
   biometricsEnabled: boolean;
   autoLockMinutes: number;
   lastActiveTimestamp: number;

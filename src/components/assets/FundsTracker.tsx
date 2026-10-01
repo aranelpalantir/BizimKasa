@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
-import { Plus, ArrowUpRight, ArrowDownRight, Trash2, Filter, History, PieChart, TrendingUp, DollarSign } from 'lucide-react';
+import { 
+  Plus, 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  Trash2, 
+  Edit2,
+  Filter, 
+  History, 
+  PieChart, 
+  TrendingUp, 
+  DollarSign
+} from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -7,13 +18,14 @@ import {
   YAxis, 
   Tooltip, 
   ResponsiveContainer, 
-  Cell 
+  Cell,
+  LabelList
 } from 'recharts';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GroupFilterBar } from '../common/GroupFilterBar';
 import { db } from '../../db/db';
-import { formatTRY, formatNumber } from '../../services/portfolioService';
+import { formatTRY, formatNumber, parseUserInputNumber, formatForInput } from '../../services/portfolioService';
 import { lookupTefasFund, searchTefasFunds } from '../../services/ratesService';
 import type { Account, AssetTransaction, MarketRate, Group } from '../../types/finance';
 
@@ -52,6 +64,17 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
   const [note, setNote] = useState('');
   const [fundSuggestions, setFundSuggestions] = useState<Array<{ code: string; name: string }>>([]);
 
+  // Edit Transaction Form State
+  const [editingTx, setEditingTx] = useState<AssetTransaction | null>(null);
+  const [editTxType, setEditTxType] = useState<'BUY' | 'SELL'>('BUY');
+  const [editGroupId, setEditGroupId] = useState<string>('');
+  const [editAccountId, setEditAccountId] = useState<string>('');
+  const [editQuantity, setEditQuantity] = useState('');
+  const [editUnitPrice, setEditUnitPrice] = useState('');
+  const [editTotalTRY, setEditTotalTRY] = useState('');
+  const [editTxDate, setEditTxDate] = useState('');
+  const [editNote, setEditNote] = useState('');
+
   // Confirm delete dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -89,9 +112,6 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
   }
 
   // Calculate detailed metrics for each fund
-  let totalFundsCost = 0;
-  let totalFundsValue = 0;
-
   const fundData = matchingFundAccounts.map((acc) => {
     const accTxs = transactions.filter(t => t.accountId === acc.id);
     let boughtQty = 0;
@@ -119,10 +139,14 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     const profitLossTRY = valueTRY - costTRY;
     const profitLossPct = costTRY > 0 ? (profitLossTRY / costTRY) * 100 : 0;
 
-    totalFundsCost += costTRY;
-    totalFundsValue += valueTRY;
-
     const grp = groups.find(g => g.id === acc.groupId);
+
+    // Identify all groups holding transactions for this fund
+    const txGroupIds = Array.from(new Set(accTxs.map(t => t.groupId).filter(Boolean)));
+    if (txGroupIds.length === 0 && acc.groupId) {
+      txGroupIds.push(acc.groupId);
+    }
+    const holdingGroups = groups.filter(g => txGroupIds.includes(g.id));
 
     return {
       account: acc,
@@ -130,6 +154,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       name: acc.name,
       groupName: grp?.name,
       groupColor: grp?.color,
+      holdingGroups,
       netQty,
       avgCost,
       costTRY,
@@ -140,11 +165,35 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       ratioPct: 0
     };
   });
+ 
+  const totalFundsCost = fundData.reduce((sum, f) => sum + f.costTRY, 0);
+  const totalFundsValue = fundData.reduce((sum, f) => sum + f.valueTRY, 0);
 
   // Calculate ratio %
   for (const item of fundData) {
     item.ratioPct = totalFundsValue > 0 ? (item.valueTRY / totalFundsValue) * 100 : 0;
   }
+
+  // Sorting state for the detailed funds table
+  type FundSortField = 'symbol' | 'ratioPct' | 'netQty' | 'costTRY' | 'valueTRY' | 'profitLossTRY' | 'profitLossPct';
+  const [sortField, setSortField] = useState<FundSortField>('valueTRY');
+  const [sortAsc, setSortAsc] = useState<boolean>(false);
+
+  const handleSort = (field: FundSortField) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(false);
+    }
+  };
+
+  const sortedFundData = [...fundData].sort((a, b) => {
+    let diff = 0;
+    if (sortField === 'symbol') diff = a.symbol.localeCompare(b.symbol);
+    else diff = (a[sortField] || 0) - (b[sortField] || 0);
+    return sortAsc ? diff : -diff;
+  });
 
   const totalFundsProfitLoss = totalFundsValue - totalFundsCost;
   const totalFundsProfitPct = totalFundsCost > 0 ? (totalFundsProfitLoss / totalFundsCost) * 100 : 0;
@@ -163,33 +212,37 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     if (historyFilter === 'THIS_YEAR') return tx.year === 2026;
     if (historyFilter === 'PREV_YEAR') return tx.year === 2025;
     return true;
+  }).sort((a, b) => {
+    const dateDiff = b.date.localeCompare(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    return (b.createdAt || '').localeCompare(a.createdAt || '');
   });
 
   // Sync inputs
   const handleQtyChange = (qVal: string) => {
     setQuantity(qVal);
-    const q = parseFloat(qVal.replace(',', '.'));
-    const u = parseFloat(unitPrice.replace(',', '.'));
-    if (!isNaN(q) && !isNaN(u) && q > 0) {
-      setTotalTRY((q * u).toFixed(2));
+    const q = parseUserInputNumber(qVal);
+    const u = parseUserInputNumber(unitPrice);
+    if (q > 0 && u > 0) {
+      setTotalTRY(formatForInput(Math.round(q * u * 100) / 100));
     }
   };
 
   const handleUnitPriceChange = (uVal: string) => {
     setUnitPrice(uVal);
-    const q = parseFloat(quantity.replace(',', '.'));
-    const u = parseFloat(uVal.replace(',', '.'));
-    if (!isNaN(q) && !isNaN(u) && q > 0) {
-      setTotalTRY((q * u).toFixed(2));
+    const q = parseUserInputNumber(quantity);
+    const u = parseUserInputNumber(uVal);
+    if (q > 0 && u > 0) {
+      setTotalTRY(formatForInput(Math.round(q * u * 100) / 100));
     }
   };
 
   const handleTotalTRYChange = (tVal: string) => {
     setTotalTRY(tVal);
-    const q = parseFloat(quantity.replace(',', '.'));
-    const t = parseFloat(tVal.replace(',', '.'));
-    if (!isNaN(q) && !isNaN(t) && q > 0) {
-      setUnitPrice((t / q).toFixed(4));
+    const q = parseUserInputNumber(quantity);
+    const t = parseUserInputNumber(tVal);
+    if (q > 0 && t > 0) {
+      setUnitPrice(formatForInput(Math.round((t / q) * 10000) / 10000));
     }
   };
 
@@ -206,7 +259,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       if (matched) {
         setNewFundName(matched.name);
         if (!unitPrice) {
-          setUnitPrice(matched.estimatedPrice.toString());
+          setUnitPrice(formatForInput(matched.estimatedPrice));
         }
       }
     } else {
@@ -269,7 +322,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       targetAccId = newAcc.id;
 
       // Add default market rate
-      const p = parseFloat(unitPrice.replace(',', '.')) || 10;
+      const p = parseUserInputNumber(unitPrice) || 10;
       await db.marketRates.put({
         symbol: code,
         name: newAcc.name,
@@ -285,11 +338,11 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
 
     if (!targetAccId) return;
 
-    const q = parseFloat(quantity.replace(',', '.'));
-    const t = parseFloat(totalTRY.replace(',', '.'));
-    const u = parseFloat(unitPrice.replace(',', '.')) || (t / q);
+    const q = parseUserInputNumber(quantity);
+    const t = parseUserInputNumber(totalTRY);
+    const u = parseUserInputNumber(unitPrice) || (q > 0 ? t / q : 0);
 
-    if (isNaN(q) || q <= 0 || isNaN(t) || t <= 0) return;
+    if (q <= 0 || t <= 0) return;
 
     const dateObj = new Date(txDate);
     const newTx: AssetTransaction = {
@@ -315,6 +368,75 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     setNote('');
     setIsCreatingNewFund(false);
     setFundSuggestions([]);
+  };
+
+  const handleOpenEditTx = (tx: AssetTransaction) => {
+    const defaultGid = tx.groupId || accounts.find(a => a.id === tx.accountId)?.groupId || groups[0]?.id || '';
+    setEditingTx(tx);
+    setEditTxType(tx.type);
+    setEditGroupId(defaultGid);
+    setEditAccountId(tx.accountId);
+    setEditQuantity(formatForInput(tx.quantity));
+    setEditUnitPrice(formatForInput(tx.unitPriceTRY));
+    setEditTotalTRY(formatForInput(tx.totalAmountTRY));
+    setEditTxDate(tx.date);
+    setEditNote(tx.note || '');
+  };
+
+  const handleEditQtyChange = (qVal: string) => {
+    setEditQuantity(qVal);
+    const q = parseUserInputNumber(qVal);
+    const u = parseUserInputNumber(editUnitPrice);
+    if (q > 0 && u > 0) {
+      setEditTotalTRY(formatForInput(Math.round(q * u * 100) / 100));
+    }
+  };
+
+  const handleEditUnitPriceChange = (uVal: string) => {
+    setEditUnitPrice(uVal);
+    const q = parseUserInputNumber(editQuantity);
+    const u = parseUserInputNumber(uVal);
+    if (q > 0 && u > 0) {
+      setEditTotalTRY(formatForInput(Math.round(q * u * 100) / 100));
+    }
+  };
+
+  const handleEditTotalTRYChange = (tVal: string) => {
+    setEditTotalTRY(tVal);
+    const q = parseUserInputNumber(editQuantity);
+    const t = parseUserInputNumber(tVal);
+    if (q > 0 && t > 0) {
+      setEditUnitPrice(formatForInput(Math.round((t / q) * 10000) / 10000));
+    }
+  };
+
+  const handleSaveEditTransaction = async () => {
+    if (!editingTx || !editAccountId) return;
+
+    const q = parseUserInputNumber(editQuantity);
+    const t = parseUserInputNumber(editTotalTRY);
+    const u = parseUserInputNumber(editUnitPrice) || (q > 0 ? t / q : 0);
+
+    if (q <= 0 || t <= 0) return;
+
+    const dateObj = new Date(editTxDate);
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth() + 1;
+
+    await db.transactions.update(editingTx.id, {
+      accountId: editAccountId,
+      groupId: editGroupId,
+      date: editTxDate,
+      year,
+      month,
+      type: editTxType,
+      quantity: q,
+      totalAmountTRY: t,
+      unitPriceTRY: u,
+      note: editNote.trim() || undefined
+    });
+
+    setEditingTx(null);
   };
 
   const handleDeleteFund = (acc: Account) => {
@@ -378,7 +500,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
         groups={groupsWithFunds.length > 0 ? groupsWithFunds : groups}
         selectedGroupId={selectedGroupId}
         onSelectGroup={setSelectedGroupId}
-        title="Hesap Grubu"
+        title="Hesap"
       />
 
       {/* SUMMARY TOTALS */}
@@ -431,14 +553,28 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             </div>
             <div className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fundData}>
+                <BarChart data={fundData} margin={{ top: 20, right: 10, left: -15, bottom: 0 }}>
                   <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
                   <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `%${v}`} />
                   <Tooltip
-                    formatter={(val: any) => [`%${formatNumber(Number(val) || 0, 2)}`, 'Portföy Oranı']}
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const val = Number(payload[0].value) || 0;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/15 shadow-xl text-xs space-y-1">
+                            <p className="font-bold text-white">{label}</p>
+                            <p className="font-semibold font-mono text-sky-400">
+                              Portföy Oranı : %{formatNumber(val, 2)}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
                   />
                   <Bar dataKey="ratioPct" radius={[6, 6, 0, 0]}>
+                    <LabelList dataKey="ratioPct" position="top" fill="#94a3b8" fontSize={9} formatter={(v: any) => `%${Number(v).toFixed(1)}`} />
                     {fundData.map((_, i) => (
                       <Cell key={i} fill={chartColors[i % chartColors.length]} />
                     ))}
@@ -459,14 +595,29 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             </div>
             <div className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fundData}>
+                <BarChart data={fundData} margin={{ top: 20, right: 10, left: -15, bottom: 0 }}>
                   <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
                   <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip
-                    formatter={(val: any) => [formatTRY(Number(val) || 0, hideValues), 'Maliyet']}
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const val = Number(payload[0].value) || 0;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/15 shadow-xl text-xs space-y-1">
+                            <p className="font-bold text-white">{label}</p>
+                            <p className="font-semibold font-mono text-amber-400">
+                              Toplam Maliyet : {formatTRY(val, hideValues)}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
                   />
-                  <Bar dataKey="costTRY" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="costTRY" fill="#f59e0b" radius={[6, 6, 0, 0]}>
+                    <LabelList dataKey="costTRY" position="top" fill="#f59e0b" fontSize={9} formatter={(v: any) => `${(Number(v) / 1000).toFixed(0)}k`} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -483,14 +634,29 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             </div>
             <div className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fundData}>
+                <BarChart data={fundData} margin={{ top: 20, right: 10, left: -15, bottom: 0 }}>
                   <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
                   <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip
-                    formatter={(val: any) => [formatTRY(Number(val) || 0, hideValues), 'Güncel Değer']}
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const val = Number(payload[0].value) || 0;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/15 shadow-xl text-xs space-y-1">
+                            <p className="font-bold text-white">{label}</p>
+                            <p className="font-semibold font-mono text-indigo-300">
+                              Güncel Değer : {formatTRY(val, hideValues)}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
                   />
-                  <Bar dataKey="valueTRY" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="valueTRY" fill="#6366f1" radius={[6, 6, 0, 0]}>
+                    <LabelList dataKey="valueTRY" position="top" fill="#a5b4fc" fontSize={9} formatter={(v: any) => `${(Number(v) / 1000).toFixed(0)}k`} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -507,14 +673,29 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             </div>
             <div className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fundData}>
+                <BarChart data={fundData} margin={{ top: 20, right: 10, left: -15, bottom: 0 }}>
                   <XAxis dataKey="symbol" stroke="#94a3b8" fontSize={11} />
                   <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip
-                    formatter={(val: any) => [formatTRY(Number(val) || 0, hideValues), 'Kâr / Zarar']}
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const val = Number(payload[0].value) || 0;
+                        const isProfit = val >= 0;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/15 shadow-xl text-xs space-y-1">
+                            <p className="font-bold text-white">{label}</p>
+                            <p className={`font-semibold font-mono ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              Net Kâr / Zarar : {isProfit ? '+' : ''}{formatTRY(val, hideValues)}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
                   />
                   <Bar dataKey="profitLossTRY" radius={[6, 6, 0, 0]}>
+                    <LabelList dataKey="profitLossTRY" position="top" fill="#34d399" fontSize={9} formatter={(v: any) => `${(Number(v) / 1000).toFixed(0)}k`} />
                     {fundData.map((entry, i) => (
                       <Cell key={i} fill={entry.profitLossTRY >= 0 ? '#10b981' : '#f43f5e'} />
                     ))}
@@ -526,31 +707,66 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
         </div>
       )}
 
-      {/* DETAILED FUNDS TABLE */}
+      {/* DETAILED FUNDS TABLE WITH SORTABLE COLUMNS */}
       <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-slate-950/80 border-b border-white/10 text-slate-400 font-semibold">
-              <th className="py-3 px-4 min-w-[150px]">Fon Adı / Kodu</th>
-              <th className="py-3 px-2.5 text-left">Grup</th>
-              <th className="py-3 px-3 text-right">Adet</th>
-              <th className="py-3 px-3 text-right">Portföy Oranı</th>
-              <th className="py-3 px-3 text-right">Maliyet (TL)</th>
-              <th className="py-3 px-3 text-right">Değer (TL)</th>
-              <th className="py-3 px-3 text-right">Kâr / Zarar (TL)</th>
-              <th className="py-3 px-3 text-right">Kâr / Zarar (%)</th>
+            <tr className="bg-slate-950/80 border-b border-white/10 text-slate-400 font-semibold select-none">
+              <th onClick={() => handleSort('symbol')} className="py-3 px-4 min-w-[150px] cursor-pointer hover:text-white">
+                <div className="flex items-center gap-1">
+                  <span>Fon Adı / Kodu</span>
+                  {sortField === 'symbol' && <span>{sortAsc ? '▲' : '▼'}</span>}
+                </div>
+              </th>
+              <th className="py-3 px-2.5 text-left">Hesap</th>
+              <th onClick={() => handleSort('netQty')} className="py-3 px-3 text-right cursor-pointer hover:text-white">
+                <div className="flex items-center justify-end gap-1">
+                  <span>Adet</span>
+                  {sortField === 'netQty' && <span>{sortAsc ? '▲' : '▼'}</span>}
+                </div>
+              </th>
+              <th onClick={() => handleSort('ratioPct')} className="py-3 px-3 text-right cursor-pointer hover:text-white">
+                <div className="flex items-center justify-end gap-1">
+                  <span>Portföy Oranı</span>
+                  {sortField === 'ratioPct' && <span>{sortAsc ? '▲' : '▼'}</span>}
+                </div>
+              </th>
+              <th onClick={() => handleSort('costTRY')} className="py-3 px-3 text-right cursor-pointer hover:text-white">
+                <div className="flex items-center justify-end gap-1">
+                  <span>Maliyet (TL)</span>
+                  {sortField === 'costTRY' && <span>{sortAsc ? '▲' : '▼'}</span>}
+                </div>
+              </th>
+              <th onClick={() => handleSort('valueTRY')} className="py-3 px-3 text-right cursor-pointer hover:text-white">
+                <div className="flex items-center justify-end gap-1">
+                  <span>Değer (TL)</span>
+                  {sortField === 'valueTRY' && <span>{sortAsc ? '▲' : '▼'}</span>}
+                </div>
+              </th>
+              <th onClick={() => handleSort('profitLossTRY')} className="py-3 px-3 text-right cursor-pointer hover:text-white">
+                <div className="flex items-center justify-end gap-1">
+                  <span>Kâr / Zarar (TL)</span>
+                  {sortField === 'profitLossTRY' && <span>{sortAsc ? '▲' : '▼'}</span>}
+                </div>
+              </th>
+              <th onClick={() => handleSort('profitLossPct')} className="py-3 px-3 text-right cursor-pointer hover:text-white">
+                <div className="flex items-center justify-end gap-1">
+                  <span>Kâr / Zarar (%)</span>
+                  {sortField === 'profitLossPct' && <span>{sortAsc ? '▲' : '▼'}</span>}
+                </div>
+              </th>
               <th className="py-3 px-2 text-center w-10">İşlem</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 font-mono">
-            {fundData.length === 0 ? (
+            {sortedFundData.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-6 text-center text-slate-400 font-sans text-xs">
-                  Bu grupta kayıtlı fon bulunmuyor.
+                  Bu hesapta kayıtlı fon bulunmuyor.
                 </td>
               </tr>
             ) : (
-              fundData.map((f) => (
+              sortedFundData.map((f) => (
                 <tr key={f.account.id} className="hover:bg-white/[0.02] transition-colors">
                   <td className="py-3 px-4 font-sans">
                     <div className="flex items-center gap-2">
@@ -561,13 +777,27 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                     </div>
                   </td>
                   <td className="py-3 px-2.5 font-sans">
-                    {f.groupName && (
-                      <span
-                        className="text-[10px] px-2 py-0.5 rounded font-semibold"
-                        style={{ backgroundColor: `${f.groupColor}20`, color: f.groupColor }}
-                      >
-                        {f.groupName}
-                      </span>
+                    {selectedGroupId === 'ALL' ? (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {f.holdingGroups.map((g) => (
+                          <span
+                            key={g.id}
+                            className="text-[10px] px-2 py-0.5 rounded font-semibold whitespace-nowrap"
+                            style={{ backgroundColor: `${g.color}20`, color: g.color }}
+                          >
+                            {g.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      f.groupName && (
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded font-semibold whitespace-nowrap"
+                          style={{ backgroundColor: `${f.groupColor}20`, color: f.groupColor }}
+                        >
+                          {f.groupName}
+                        </span>
+                      )
                     )}
                   </td>
                   <td className="py-3 px-3 text-right text-slate-300">
@@ -688,6 +918,13 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                       <span className="text-[10px] text-slate-500">{tx.date}</span>
                     </div>
                     <button
+                      onClick={() => handleOpenEditTx(tx)}
+                      className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
+                      title="İşlemi Düzenle"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => handleDeleteTx(tx.id)}
                       className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
                       title="İşlemi Sil"
@@ -744,30 +981,34 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             </button>
           </div>
 
-          {/* Group Selection */}
+          {/* Account Selection */}
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Hangi Gruba Ait?</label>
-            <select
-              value={targetGroupId}
-              onChange={(e) => {
-                const gid = e.target.value;
-                setTargetGroupId(gid);
-                const gFunds = accounts.filter(a => a.groupId === gid && (a.subType === 'FUND' || a.subType === 'STOCK'));
-                if (gFunds.length > 0) {
-                  setSelectedAccountId(gFunds[0].id);
-                  const rate = rateMap.get(gFunds[0].symbol || gFunds[0].name);
-                  if (rate) setUnitPrice(rate.toString());
-                } else {
-                  setSelectedAccountId('');
-                  setIsCreatingNewFund(true);
-                }
-              }}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
-            >
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Hangi Hesaba Ait?</label>
+            {groups.length === 0 ? (
+              <p className="text-xs text-amber-400">Henüz kayıtlı bir hesap bulunmuyor. Önce yukarıdan 'Yeni Hesap' eklemelisiniz.</p>
+            ) : (
+              <select
+                value={targetGroupId}
+                onChange={(e) => {
+                  const gid = e.target.value;
+                  setTargetGroupId(gid);
+                  const gFunds = accounts.filter(a => a.groupId === gid && (a.subType === 'FUND' || a.subType === 'STOCK'));
+                  if (gFunds.length > 0) {
+                    setSelectedAccountId(gFunds[0].id);
+                    const rate = rateMap.get(gFunds[0].symbol || gFunds[0].name);
+                    if (rate) setUnitPrice(rate.toString());
+                  } else {
+                    setSelectedAccountId('');
+                    setIsCreatingNewFund(true);
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+              >
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* If BUY: can select existing or create new fund */}
@@ -924,25 +1165,24 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="min-w-0">
               <label className="block text-xs font-medium text-slate-400 mb-1">İşlem Tarihi</label>
               <input
                 type="date"
                 value={txDate}
                 onChange={(e) => setTxDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
               />
             </div>
 
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-medium text-slate-400 mb-1">Açıklama / Not</label>
               <input
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Örn: Portföy takviyesi"
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
               />
             </div>
           </div>
@@ -967,6 +1207,156 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
               }`}
             >
               {txType === 'BUY' ? 'Alışı Kaydet' : 'Satışı Kaydet'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* EDIT TRANSACTION MODAL */}
+      <Modal
+        isOpen={!!editingTx}
+        onClose={() => setEditingTx(null)}
+        title="Fon İşlemini Düzenle"
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-950 border border-white/10">
+            <button
+              type="button"
+              onClick={() => setEditTxType('BUY')}
+              className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                editTxType === 'BUY' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'
+              }`}
+            >
+              Fon Alışı (+)
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditTxType('SELL')}
+              className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                editTxType === 'SELL' ? 'bg-rose-500 text-white' : 'text-slate-400'
+              }`}
+            >
+              Fon Satışı / Bozdurma (-)
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Hangi Hesaba Ait?</label>
+            <select
+              value={editGroupId}
+              onChange={(e) => {
+                const gid = e.target.value;
+                setEditGroupId(gid);
+                const gFunds = accounts.filter(a => a.groupId === gid && (a.subType === 'FUND' || a.subType === 'STOCK'));
+                if (gFunds.length > 0 && !gFunds.some(a => a.id === editAccountId)) {
+                  setEditAccountId(gFunds[0].id);
+                }
+              }}
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+            >
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">İşlem Gören Fon</label>
+            <select
+              value={editAccountId}
+              onChange={(e) => setEditAccountId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+            >
+              {(accounts.some(a => a.groupId === editGroupId && (a.subType === 'FUND' || a.subType === 'STOCK'))
+                ? accounts.filter(a => a.groupId === editGroupId && (a.subType === 'FUND' || a.subType === 'STOCK'))
+                : accounts.filter(a => a.subType === 'FUND' || a.subType === 'STOCK')
+              ).map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.symbol ? `[${acc.symbol}] ` : ''}{acc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                {editTxType === 'BUY' ? 'Alınan Adet' : 'Satılan Adet'}
+              </label>
+              <input
+                type="text"
+                value={editQuantity}
+                onChange={(e) => handleEditQtyChange(e.target.value)}
+                placeholder="Örn: 1000"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                {editTxType === 'BUY' ? 'Birim Alış Fiyatı (TL)' : 'Birim Satış Fiyatı (TL)'}
+              </label>
+              <input
+                type="text"
+                value={editUnitPrice}
+                onChange={(e) => handleEditUnitPriceChange(e.target.value)}
+                placeholder="Örn: 14.50"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-amber-400"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              {editTxType === 'BUY' ? 'Toplam Ödenen Tutar (TL)' : 'Toplam Satış Geliri (TL)'}
+            </label>
+            <input
+              type="text"
+              value={editTotalTRY}
+              onChange={(e) => handleEditTotalTRYChange(e.target.value)}
+              placeholder="Örn: 14500"
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono font-bold text-base focus:outline-none focus:border-amber-400"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-slate-400 mb-1">İşlem Tarihi</label>
+              <input
+                type="date"
+                value={editTxDate}
+                onChange={(e) => setEditTxDate(e.target.value)}
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-slate-400 mb-1">Açıklama / Not</label>
+              <input
+                type="text"
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+                className="w-full min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => setEditingTx(null)}
+              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Vazgeç
+            </button>
+            <button
+              onClick={handleSaveEditTransaction}
+              className={`px-5 py-2 rounded-xl text-xs font-bold shadow-md transition-colors ${
+                editTxType === 'BUY' 
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20' 
+                  : 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-500/20'
+              }`}
+            >
+              Değişiklikleri Kaydet
             </button>
           </div>
         </div>

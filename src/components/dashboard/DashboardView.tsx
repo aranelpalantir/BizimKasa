@@ -4,8 +4,9 @@ import { RealReturnChips } from './RealReturnChips';
 import { RatesTicker } from './RatesTicker';
 import { PortfolioAllocationChart } from './PortfolioAllocationChart';
 import { GroupFilterBar } from '../common/GroupFilterBar';
+import { AddAccountModal } from '../common/AddAccountModal';
 import { calculatePortfolioSummary, formatTRY, formatNumber } from '../../services/portfolioService';
-import { ArrowRight, Coins, Euro, LineChart, Users } from 'lucide-react';
+import { ArrowRight, Coins, Euro, LineChart, Users, Plus, Wallet } from 'lucide-react';
 import type { Account, AssetTransaction, MarketRate, CashFlowEntry, Group } from '../../types/finance';
 
 interface DashboardViewProps {
@@ -35,6 +36,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const currentYear = 2026;
   const currentMonth = new Date().getMonth() + 1; // 1-12
   const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
+  const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
 
   // 1. Calculate Portfolio metrics based on selected group
   const portfolioSummary = calculatePortfolioSummary(
@@ -63,12 +65,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const currentGroupName = selectedGroupId === 'ALL' 
     ? 'Tüm Portföy (Konsolide)' 
-    : groups.find(g => g.id === selectedGroupId)?.name || 'Grup';
+    : groups.find(g => g.id === selectedGroupId)?.name || 'Hesap';
 
   return (
     <div className="space-y-5">
       {/* Live Market Rates Horizontal Ticker with Groups & 10-day history */}
       <RatesTicker rates={rates} />
+
+      {/* Onboarding Empty Banner when no accounts exist */}
+      {groups.length === 0 && (
+        <div className="p-6 rounded-3xl bg-slate-900/90 border border-amber-500/30 text-center space-y-3 shadow-xl">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+            <Wallet className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white">Henüz Kayıtlı Bir Hesap Bulunmuyor</h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
+              Varlıklarınızı (altın, döviz, fon) veya bütçenizi takip etmek için ilk hesabınızı oluşturun (örn: Ana Hesap, Yatırım Portföyü, Ortak Kasa).
+            </p>
+          </div>
+          <button
+            onClick={() => setIsAddAccountModalOpen(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ İlk Hesabını Oluştur</span>
+          </button>
+        </div>
+      )}
 
       {/* Group Filter Bar */}
       <div className="p-3 rounded-2xl bg-slate-900/60 border border-white/5 space-y-2">
@@ -76,7 +100,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           groups={groups}
           selectedGroupId={selectedGroupId}
           onSelectGroup={setSelectedGroupId}
-          title="Grup Seçimi"
+          title="Hesap"
+          onAddGroup={() => setIsAddAccountModalOpen(true)}
+          addLabel="Yeni Hesap"
         />
       </div>
 
@@ -99,9 +125,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Ana Grup Dağılımı
+              Hesap & Portföy Dağılımı
             </h3>
-            <span className="text-[11px] text-slate-500">Kişi / Grup Bazında Net Varlık</span>
+            <span className="text-[11px] text-slate-500">Kişi / Kasa Bazında Net Varlık</span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -158,15 +184,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-slate-950/60 border border-white/5 text-center">
             <div>
-              <span className="text-[10px] font-semibold text-rose-400 uppercase block">Gider</span>
-              <span className="text-sm sm:text-base font-bold font-mono text-white mt-1 block">
-                {formatTRY(monthExpense, hideValues)}
-              </span>
-            </div>
-            <div className="border-x border-white/10 px-1">
               <span className="text-[10px] font-semibold text-emerald-400 uppercase block">Gelir</span>
               <span className="text-sm sm:text-base font-bold font-mono text-white mt-1 block">
                 {formatTRY(monthIncome, hideValues)}
+              </span>
+            </div>
+            <div className="border-x border-white/10 px-1">
+              <span className="text-[10px] font-semibold text-rose-400 uppercase block">Gider</span>
+              <span className="text-sm sm:text-base font-bold font-mono text-white mt-1 block">
+                {formatTRY(monthExpense, hideValues)}
               </span>
             </div>
             <div>
@@ -264,6 +290,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Add Account Modal */}
+      <AddAccountModal
+        isOpen={isAddAccountModalOpen}
+        onClose={() => setIsAddAccountModalOpen(false)}
+        onAccountCreated={(newId) => setSelectedGroupId(newId)}
+      />
     </div>
   );
 };

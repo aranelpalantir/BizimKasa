@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Layers } from 'lucide-react';
+import { Wallet, Layers, Plus } from 'lucide-react';
 import type { Group } from '../../types/finance';
 
 interface GroupFilterBarProps {
@@ -7,19 +7,23 @@ interface GroupFilterBarProps {
   selectedGroupId: string; // 'ALL' or group.id
   onSelectGroup: (groupId: string) => void;
   title?: string;
+  onAddGroup?: () => void;
+  addLabel?: string;
 }
 
 export const GroupFilterBar: React.FC<GroupFilterBarProps> = ({
   groups,
   selectedGroupId,
   onSelectGroup,
-  title
+  title,
+  onAddGroup,
+  addLabel
 }) => {
   return (
     <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar select-none">
       {title && (
-        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1 flex-shrink-0">
-          <Users className="w-3.5 h-3.5 text-amber-400" />
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1.5 flex-shrink-0">
+          <Wallet className="w-3.5 h-3.5 text-amber-400" />
           <span>{title}:</span>
         </span>
       )}
@@ -63,6 +67,18 @@ export const GroupFilterBar: React.FC<GroupFilterBarProps> = ({
           </button>
         );
       })}
+
+      {/* Add New Account Button */}
+      {onAddGroup && (
+        <button
+          onClick={onAddGroup}
+          title={addLabel || "Yeni Hesap Ekle"}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-amber-300 bg-slate-900/40 hover:bg-slate-800 border border-dashed border-white/20 hover:border-amber-400/50 transition-all flex-shrink-0 active:scale-95"
+        >
+          <Plus className="w-3.5 h-3.5 text-amber-400" />
+          <span>{addLabel || '+ Yeni Hesap'}</span>
+        </button>
+      )}
     </div>
   );
 };

@@ -11,34 +11,49 @@ interface RealReturnChipsProps {
 export const RealReturnChips: React.FC<RealReturnChipsProps> = ({ summary, hideValues }) => {
   const isProfit = summary.profitLossTRY >= 0;
 
+  const formatForeign = (val: number, symbol: string, isSuffix = false) => {
+    if (hideValues) return `•••• ${symbol}`;
+    const prefix = val > 0 ? '+' : val < 0 ? '-' : '';
+    const formatted = formatNumber(Math.abs(val), 2);
+    return isSuffix ? `${prefix}${formatted} ${symbol}` : `${prefix}${symbol}${formatted}`;
+  };
+
   const chips = [
     {
       id: 'try',
-      label: 'Kâr / Zarar (₺)',
-      value: `${isProfit ? '+' : ''}${formatTRY(summary.profitLossTRY, hideValues)}`,
+      label: 'Net Kâr / Zarar (₺)',
+      value: `${isProfit && summary.profitLossTRY > 0 ? '+' : ''}${formatTRY(summary.profitLossTRY, hideValues)}`,
       icon: TrendingUp,
-      color: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400',
+      color: isProfit
+        ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+        : 'border-rose-500/20 bg-rose-500/10 text-rose-400',
     },
     {
       id: 'usd',
-      label: 'Reel Getiri ($)',
-      value: hideValues ? '•••• $' : `${isProfit ? '+' : ''}$${formatNumber(summary.profitLossUSD, 2)}`,
+      label: 'Dolar Karşılığı ($)',
+      value: formatForeign(summary.profitLossUSD, '$'),
       icon: DollarSign,
-      color: 'border-blue-500/20 bg-blue-500/10 text-blue-400',
+      color: isProfit
+        ? 'border-blue-500/20 bg-blue-500/10 text-blue-400'
+        : 'border-rose-500/20 bg-rose-500/10 text-rose-400',
     },
     {
       id: 'eur',
-      label: 'Reel Getiri (€)',
-      value: hideValues ? '•••• €' : `${isProfit ? '+' : ''}€${formatNumber(summary.profitLossEUR, 2)}`,
+      label: 'Euro Karşılığı (€)',
+      value: formatForeign(summary.profitLossEUR, '€'),
       icon: Euro,
-      color: 'border-indigo-500/20 bg-indigo-500/10 text-indigo-400',
+      color: isProfit
+        ? 'border-indigo-500/20 bg-indigo-500/10 text-indigo-400'
+        : 'border-rose-500/20 bg-rose-500/10 text-rose-400',
     },
     {
       id: 'gold',
-      label: 'Reel Getiri (Altın)',
-      value: hideValues ? '•••• gr' : `${isProfit ? '+' : ''}${formatNumber(summary.profitLossGoldGram, 2)} gr`,
+      label: 'Altın Karşılığı (gr)',
+      value: formatForeign(summary.profitLossGoldGram, 'gr', true),
       icon: Coins,
-      color: 'border-amber-500/20 bg-amber-500/10 text-amber-400',
+      color: isProfit
+        ? 'border-amber-500/20 bg-amber-500/10 text-amber-400'
+        : 'border-rose-500/20 bg-rose-500/10 text-rose-400',
     },
   ];
 
@@ -46,9 +61,9 @@ export const RealReturnChips: React.FC<RealReturnChipsProps> = ({ summary, hideV
     <div className="space-y-2">
       <div className="flex items-center justify-between px-1">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-          Enflasyondan Arındırılmış Reel Getiri
+          Kâr / Zarar (Döviz & Altın Karşılığı)
         </h3>
-        <span className="text-[11px] text-slate-500">Çoklu Para Birimi</span>
+        <span className="text-[11px] text-slate-500">Güncel Piyasa Kurlarıyla</span>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
