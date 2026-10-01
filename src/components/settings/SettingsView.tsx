@@ -126,7 +126,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       confirmText: 'Kaldır',
       isDestructive: true,
       onConfirm: async () => {
-        await updateSettings({ pinHash: undefined, pinLength: undefined, biometricsEnabled: false });
+        await updateSettings({
+          pinHash: undefined,
+          pinLength: undefined,
+          biometricsEnabled: false,
+          biometricCredentialId: undefined
+        });
         onRefreshSettings();
         showFeedback('success', 'PIN koruması kaldırıldı.');
       }
@@ -143,14 +148,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (!settings.biometricsEnabled) {
       const res = await registerBiometrics();
       if (res.success) {
-        await updateSettings({ biometricsEnabled: true });
+        await updateSettings({
+          biometricsEnabled: true,
+          biometricCredentialId: res.credentialId
+        });
         onRefreshSettings();
-        showFeedback('success', 'Biyometrik doğrulama (FaceID / TouchID) aktifleştirildi.');
+        showFeedback('success', 'Biyometrik doğrulama (Face ID / Touch ID) aktifleştirildi.');
       } else {
         showFeedback('error', res.errorReason || 'Biyometrik sensör bulunamadı veya onaylanmadı.');
       }
     } else {
-      await updateSettings({ biometricsEnabled: false });
+      await updateSettings({
+        biometricsEnabled: false,
+        biometricCredentialId: undefined
+      });
       onRefreshSettings();
       showFeedback('success', 'Biyometrik doğrulama devre dışı bırakıldı.');
     }
@@ -376,11 +387,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </span>
                 )}
               </div>
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-slate-400 block">
                 {settings.pinHash 
                   ? 'Telefonun donanımsal biyometrisi ile anında açılış' 
                   : 'Etkinleştirebilmek için önce yukarıdan bir PIN kodu belirlemelisiniz'}
               </span>
+              {settings.biometricsEnabled && (
+                <span className="text-[11px] text-amber-400/90 block mt-1">
+                  💡 iOS İpucu: Apple yerel Face ID tarayıcısının doğrudan tetiklenmesi için anahtarı harici uygulama (KeePass vb.) yerine <strong>iCloud Anahtar Zinciri</strong>'ne kaydedin.
+                </span>
+              )}
               {typeof window !== 'undefined' && !window.isSecureContext && (
                 <span className="text-[10px] text-amber-400/90 block mt-0.5">
                   ⚠️ Apple güvenlik kuralı: Yalnızca HTTPS bağlantısında (örn: Cloudflare Pages) çalışır.

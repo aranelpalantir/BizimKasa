@@ -117,6 +117,7 @@ export interface AppSettings {
   pinHash?: string;
   pinLength?: number;
   biometricsEnabled: boolean;
+  biometricCredentialId?: string;
   autoLockMinutes: number;
   lastActiveTimestamp: number;
   isLocked: boolean;

@@ -121,8 +121,34 @@ export async function isBiometricsAvailable(): Promise<boolean> {
   }
 }
 
+// ArrayBuffer to Base64 (Standard binary-safe)
+export function bufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Base64 to ArrayBuffer (BufferSource for WebAuthn)
+export function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  let normalized = base64.replace(/-/g, '+').replace(/_/g, '/');
+  while (normalized.length % 4) {
+    normalized += '=';
+  }
+  const binary = atob(normalized);
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return buffer;
+}
+
 export interface BiometricResult {
   success: boolean;
+  credentialId?: string;
   errorReason?: string;
 }
 
@@ -171,31 +197,39 @@ export async function registerBiometrics(): Promise<BiometricResult> {
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
 
-    const credential = await navigator.credentials.create({
+    const credential = (await navigator.credentials.create({
       publicKey: {
         challenge,
         rp: { name: 'BizimKasa', id: window.location.hostname },
         user: {
-          id: new Uint8Array([1, 2, 3, 4]),
+          id: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
           name: 'bizimkasa_user',
           displayName: 'BizimKasa Kullanıcısı'
         },
-        pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
+        pubKeyCredParams: [
+          { alg: -7, type: 'public-key' },  // ES256 (Apple Secure Enclave native)
+          { alg: -257, type: 'public-key' } // RS256
+        ],
         authenticatorSelection: {
           authenticatorAttachment: 'platform',
+          residentKey: 'required',
+          requireResidentKey: true,
           userVerification: 'required'
         },
+        attestation: 'none',
         timeout: 60000
       }
-    });
+    })) as PublicKeyCredential | null;
 
-    if (credential) {
+    if (credential && credential.rawId) {
+      const credIdBase64 = bufferToBase64(credential.rawId);
       const settingsRecord = await db.settings.get('appSettings');
       if (settingsRecord) {
         settingsRecord.value.biometricsEnabled = true;
+        settingsRecord.value.biometricCredentialId = credIdBase64;
         await db.settings.put(settingsRecord);
       }
-      return { success: true };
+      return { success: true, credentialId: credIdBase64 };
     }
     return { success: false, errorReason: 'Biyometrik doğrulama onaylanmadı.' };
   } catch (err: any) {
@@ -216,17 +250,36 @@ export async function authenticateWithBiometrics(): Promise<boolean> {
   const isIpAddress = /^(\d{1,3}\.){3}\d{1,3}$/.test(window.location.hostname);
   if (isIpAddress) return false;
 
+  const settings = await getSettings();
+
   try {
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
 
-    const assertion = await navigator.credentials.get({
-      publicKey: {
-        challenge,
-        timeout: 60000,
-        userVerification: 'required',
-        rpId: window.location.hostname
+    const publicKeyOptions: PublicKeyCredentialRequestOptions = {
+      challenge,
+      timeout: 60000,
+      userVerification: 'required',
+      rpId: window.location.hostname
+    };
+
+    if (settings.biometricCredentialId) {
+      try {
+        const credIdBuffer = base64ToArrayBuffer(settings.biometricCredentialId);
+        publicKeyOptions.allowCredentials = [
+          {
+            id: credIdBuffer,
+            type: 'public-key',
+            transports: ['internal']
+          }
+        ];
+      } catch (err) {
+        console.warn('Error decoding biometricCredentialId:', err);
       }
+    }
+
+    const assertion = await navigator.credentials.get({
+      publicKey: publicKeyOptions
     });
 
     return !!assertion;
