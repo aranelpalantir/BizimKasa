@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Fingerprint, Delete, AlertCircle } from 'lucide-react';
+import { Shield, ScanFace, Delete, AlertCircle } from 'lucide-react';
 import { verifyPin, authenticateWithBiometrics } from '../../services/securityService';
 import type { AppSettings } from '../../types/finance';
 
@@ -79,6 +79,21 @@ export const LockScreen: React.FC<LockScreenProps> = ({ settings, onUnlock }) =>
     setError(null);
   };
 
+  // Physical and external keyboard support
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') {
+        handleKeyPress(e.key);
+      } else if (e.key === 'Backspace') {
+        handleDelete();
+      } else if (e.key === 'Escape') {
+        handleClear();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pin, shake, settings.pinHash, settings.pinLength]);
+
   return (
     <div className="fixed inset-0 z-50 bg-[#080c14] flex flex-col items-center justify-between p-6 select-none">
       {/* Brand Header */}
@@ -133,8 +148,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({ settings, onUnlock }) =>
               disabled={isVerifying}
               className="h-16 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 active:scale-90 text-amber-400 transition-all border border-amber-500/20 flex flex-col items-center justify-center gap-1"
             >
-              <Fingerprint className="w-6 h-6" />
-              <span className="text-[10px] font-medium">Biyometrik</span>
+              <ScanFace className="w-6 h-6" />
+              <span className="text-[10px] font-medium">Face ID</span>
             </button>
           ) : (
             <button

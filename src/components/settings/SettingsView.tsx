@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Shield, 
   KeyRound, 
-  Fingerprint, 
+  ScanFace,
   Clock, 
   Download, 
   Upload, 
@@ -72,6 +72,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showImportPassword, setShowImportPassword] = useState(false);
   const [decryptError, setDecryptError] = useState<string | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
+
+  // Input refs for automatic focus when modals open
+  const pinInputRef = useRef<HTMLInputElement>(null);
+  const confirmPinInputRef = useRef<HTMLInputElement>(null);
+  const exportPasswordInputRef = useRef<HTMLInputElement>(null);
+  const importPasswordInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isPinModalOpen) {
+      const timer = setTimeout(() => {
+        pinInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isPinModalOpen]);
+
+  useEffect(() => {
+    if (isEncryptedExportModalOpen) {
+      const timer = setTimeout(() => {
+        exportPasswordInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isEncryptedExportModalOpen]);
+
+  useEffect(() => {
+    if (isDecryptModalOpen) {
+      const timer = setTimeout(() => {
+        importPasswordInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isDecryptModalOpen]);
 
   // Confirm dialog state
   const [confirmState, setConfirmState] = useState<{
@@ -372,53 +405,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* Biometrics (FaceID / TouchID) */}
-        <div className={`flex items-center justify-between py-2 border-b border-white/5 transition-opacity ${!settings.pinHash ? 'opacity-60' : ''}`}>
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-xl transition-colors ${settings.pinHash ? 'bg-slate-800 text-slate-300' : 'bg-slate-800/50 text-slate-500'}`}>
-              <Fingerprint className="w-4 h-4" />
+        {/* Biometrics (Face ID / Touch ID) */}
+        <div className={`flex items-center justify-between py-3 border-b border-white/5 transition-opacity ${!settings.pinHash ? 'opacity-60' : ''}`}>
+          <div className="flex items-center gap-3 min-w-0 pr-3">
+            <div className={`p-2 rounded-xl shrink-0 transition-colors ${
+              settings.biometricsEnabled 
+                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
+                : settings.pinHash 
+                  ? 'bg-slate-800 text-slate-300 border border-white/5' 
+                  : 'bg-slate-800/50 text-slate-500 border border-white/5'
+            }`}>
+              <ScanFace className="w-4 h-4" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-white block">Biyometrik Kilit (FaceID / Parmak İzi)</span>
+                <span className="text-sm font-semibold text-white block">Face ID / Parmak İzi</span>
                 {!settings.pinHash && (
-                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-semibold border border-amber-500/20">
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-semibold border border-amber-500/20 shrink-0">
                     PIN Gerekli
                   </span>
                 )}
               </div>
               <span className="text-xs text-slate-400 block">
                 {settings.pinHash 
-                  ? 'Telefonun donanımsal biyometrisi ile anında açılış' 
-                  : 'Etkinleştirebilmek için önce yukarıdan bir PIN kodu belirlemelisiniz'}
+                  ? 'Cihaz biyometrisi ile şifresiz anında açılış' 
+                  : 'Etkinleştirebilmek için önce yukarıdan bir PIN kodu belirleyin'}
               </span>
-              {settings.biometricsEnabled && (
-                <span className="text-[11px] text-amber-400/90 block mt-1">
-                  💡 iOS İpucu: Apple yerel Face ID tarayıcısının doğrudan tetiklenmesi için anahtarı harici uygulama (KeePass vb.) yerine <strong>iCloud Anahtar Zinciri</strong>'ne kaydedin.
-                </span>
-              )}
               {typeof window !== 'undefined' && !window.isSecureContext && (
                 <span className="text-[10px] text-amber-400/90 block mt-0.5">
-                  ⚠️ Apple güvenlik kuralı: Yalnızca HTTPS bağlantısında (örn: Cloudflare Pages) çalışır.
+                  ⚠️ Apple güvenlik kuralı: Yalnızca HTTPS (Cloudflare Pages vb.) üzerinde çalışır.
                 </span>
               )}
             </div>
           </div>
 
           <button
+            type="button"
             onClick={handleToggleBiometrics}
-            title={settings.pinHash ? 'Biyometrik Kilidi Aç/Kapat' : 'Önce PIN kodu belirlemelisiniz'}
-            className={`w-12 h-6.5 rounded-full transition-all relative p-0.5 border cursor-pointer ${
+            disabled={!settings.pinHash}
+            title={settings.pinHash ? 'Face ID / Biyometrik Kilidi Aç/Kapat' : 'Önce PIN kodu belirlemelisiniz'}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
               settings.biometricsEnabled
-                ? 'bg-emerald-500 border-emerald-400'
+                ? 'bg-emerald-500'
                 : settings.pinHash
-                  ? 'bg-slate-800 border-white/10 hover:border-white/20'
-                  : 'bg-slate-800/50 border-white/5'
+                  ? 'bg-slate-700 hover:bg-slate-600'
+                  : 'bg-slate-800/60 opacity-50 cursor-not-allowed'
             }`}
           >
-            <div
-              className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                settings.biometricsEnabled ? 'translate-x-5.5' : 'translate-x-0'
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                settings.biometricsEnabled ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
           </button>
@@ -627,6 +664,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         onClose={() => {
           setIsPinModalOpen(false);
           setPinError(null);
+          setNewPin('');
+          setConfirmPin('');
         }}
         title="Uygulama PIN Kodu Belirle"
       >
@@ -636,6 +675,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               4 veya 6 Haneli Sayısal PIN
             </label>
             <input
+              ref={pinInputRef}
+              autoFocus
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
@@ -647,7 +688,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 setPinError(null);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSavePin();
+                if (e.key === 'Enter') {
+                  if (!confirmPin) {
+                    confirmPinInputRef.current?.focus();
+                  } else {
+                    handleSavePin();
+                  }
+                }
               }}
               placeholder="••••"
               className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-center text-xl tracking-widest focus:outline-none focus:border-amber-400"
@@ -659,6 +706,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               PIN Kodunu Tekrar Girin
             </label>
             <input
+              ref={confirmPinInputRef}
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
@@ -718,6 +766,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </label>
             <div className="relative">
               <input
+                ref={exportPasswordInputRef}
+                autoFocus
                 type={showExportPassword ? 'text' : 'password'}
                 value={exportPassword}
                 onChange={(e) => {
@@ -800,6 +850,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </label>
             <div className="relative">
               <input
+                ref={importPasswordInputRef}
+                autoFocus
                 type={showImportPassword ? 'text' : 'password'}
                 value={importPassword}
                 onChange={(e) => {
