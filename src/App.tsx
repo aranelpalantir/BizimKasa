@@ -184,7 +184,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#080c14] text-slate-100 flex flex-col pb-20 select-none">
+    <div className="min-h-screen bg-[#080c14] text-slate-100 flex flex-col pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] select-none">
       {/* Top Navbar */}
       <Navbar
         settings={settings}

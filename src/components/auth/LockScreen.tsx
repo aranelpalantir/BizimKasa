@@ -95,9 +95,9 @@ export const LockScreen: React.FC<LockScreenProps> = ({ settings, onUnlock }) =>
   }, [pin, shake, settings.pinHash, settings.pinLength]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#080c14] flex flex-col items-center justify-between p-6 select-none">
+    <div className="fixed inset-0 z-50 bg-[#080c14] flex flex-col items-center justify-between p-6 pt-[calc(1.5rem+env(safe-area-inset-top,0px))] pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] select-none">
       {/* Brand Header */}
-      <div className="pt-8 flex flex-col items-center">
+      <div className="flex flex-col items-center">
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-xl shadow-amber-500/20 mb-4">
           <Shield className="w-8 h-8 text-slate-950 stroke-[2.5]" />
         </div>
