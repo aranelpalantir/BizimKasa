@@ -1,7 +1,7 @@
 # 🪙 BizimKasa
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version: v1.1.0](https://img.shields.io/badge/Version-v1.1.0-blue.svg)](#)
+[![Version: v1.2.0](https://img.shields.io/badge/Version-v1.2.0-blue.svg)](#)
 [![PWA: Offline Ready](https://img.shields.io/badge/PWA-Offline%20Ready-00d2ff.svg?logo=pwa&logoColor=white)](#)
 [![Cloudflare Pages](https://img.shields.io/badge/Deployed%20with-Cloudflare%20Pages-F38020.svg?logo=cloudflare)](https://bizimkasa.pages.dev/)
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-bizimkasa.pages.dev-success.svg)](https://bizimkasa.pages.dev/)
@@ -44,7 +44,8 @@ Uygulamaya tarayıcınızdan veya telefonunuzdan doğrudan erişebilirsiniz:
 ### 3. 🪙 Altın, Döviz & TEFAS Fon Portföyü
 - **Altın (Gram & Çeyrek):** Ağırlıklı ortalama birim maliyet (`Ort. Brm. Mlyt.`), güncel piyasa değeri, net kâr/zarar (₺ ve %) ve çeyrek altın çeşitleri (Çeyrek, Yarım, Tam, Cumhuriyet).
 - **Çok Yıllı Döviz Matrisi:** USD ve EUR birikimleri, yıllara yayılan nakit akışı, ortalama kur maliyeti ve anlık TL karşılığı.
-- **TEFAS Fonları & Borsa:** BIST hisseleri ve TEFAS fonları için anlık canlı fiyatlama, dinamik portföy ağırlığı ve net getiri.
+- **1.875+ TEFAS Fon Kütüphanesi:** Türkiye'deki tüm açık ve kapalı TEFAS fonlarını içeren yerleşik sözlük (`tefasFunds.ts`), akıllı kod/isim araması ve anında otomatik tamamlama.
+- **Maliyet Esaslı Hatasız Değerleme:** Fonların piyasa fiyatı kullanıcı tarafından girilene kadar kod içerisinden sahte fiyat dayatılmaz; değerleme motoru otomatik olarak alış maliyetini (`avgCost`) kullanarak sanal kâr/zarar oluşturmaz ve net varlığı tam korur.
 - **Toplu Hareket Yönetimi & CSV İçe Aktarma:** Alım/satım işlemlerini onay kutularıyla çoklu seçip tek seferde silebilme (`bulkDelete`); geçmiş verileri CSV ve metin yapıştırarak içeri aktarma.
 
 ### 4. 🎯 Aylık Yatırım & Birikim Hedef Planlayıcısı (Target & Budget Planner)
@@ -115,16 +116,16 @@ BizimKasa/
 │   │   ├── dashboard/        # Konsolide Net Varlık Kartı, Varlık Dağılım Grafiği, Kurlar
 │   │   ├── investment/       # Aylık Yatırım & Birikim Hedef Planlayıcısı (Konfeti kutlamalı)
 │   │   └── settings/         # Şifreli/Standart Yedekleme, Geri Yükleme ve Güvenlik Ayarları
-│   ├── constants/            # 18 renk seçeneği ve tema yardımcıları (themeColors.ts)
-│   ├── db/                   # Dexie.js IndexedDB şeması ve başlangıç tohum verileri
+│   ├── constants/            # 18 renk seçeneği (themeColors.ts) ve 1.875 fonluk TEFAS sözlüğü (tefasFunds.ts)
+│   ├── db/                   # Dexie.js IndexedDB v3 şeması ve başlangıç tohum verileri
 │   ├── services/             # Portföy motoru, canlı kurlar, Web Crypto API ve güvenlik servisleri
 │   │   ├── cryptoService.ts  # AES-256-GCM ve PBKDF2 Web Crypto API motoru
 │   │   ├── exportService.ts  # Şifreli & düz JSON dışa/içe aktarım servisi
 │   │   ├── securityService.ts# PIN hashing, WebAuthn FaceID/TouchID doğrulama
-│   │   ├── ratesService.ts   # Canlı serbest piyasa ve TEFAS kurları
+│   │   ├── ratesService.ts   # Canlı serbest piyasa kurları ve TEFAS senkronizasyonu
 │   │   └── portfolioService.ts# Konsolide portföy ve kâr/zarar hesaplama motoru
 │   ├── types/                # Finansal veri modelleri ve TypeScript tip tanımları
-│   └── version.ts            # Uygulama sürümü ve derleme meta verileri (v1.1.0)
+│   └── version.ts            # Uygulama sürümü ve derleme meta verileri (v1.2.0)
 ├── public/                   # PWA ikonları, web manifest ve statik varlıklar
 ├── e2e/                      # Playwright uçtan uca test senaryoları (26 test)
 ├── index.html                # PWA başlangıç HTML şablonu
