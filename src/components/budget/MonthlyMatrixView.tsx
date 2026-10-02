@@ -17,11 +17,14 @@ import {
   Briefcase,
   Building2,
   Sparkles,
-  PlusCircle
+  PlusCircle,
+  Palette
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GroupFilterBar } from '../common/GroupFilterBar';
+import { EditAccountModal } from '../common/EditAccountModal';
+import { ACCOUNT_THEME_COLORS } from '../../constants/themeColors';
 import { db } from '../../db/db';
 import { 
   formatTRY, 
@@ -90,7 +93,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   // Year dynamic filter: Only show accounts with data in this year or all accounts
   const [onlyActiveThisYear, setOnlyActiveThisYear] = useState<boolean>(false);
   // Column range mode: all 12 months or focused (last month + next 3 months)
-  const [monthRangeMode, setMonthRangeMode] = useState<'all' | 'focused'>('all');
+  const [monthRangeMode, setMonthRangeMode] = useState<'all' | 'focused'>('focused');
 
   // Modals state
   const [editingCell, setEditingCell] = useState<{ account: Account; month: number; currentVal: number } | null>(null);
@@ -99,6 +102,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupColor, setNewGroupColor] = useState('#3b82f6');
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [newAccGroupId, setNewAccGroupId] = useState('');
@@ -579,22 +583,55 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                   <React.Fragment key={group.id}>
                     {/* Group Header Row */}
                     <tr className="font-bold">
-                      <td className="py-2.5 px-3 sm:px-4 text-sm sticky left-0 z-10 bg-slate-900 border-r border-b border-t-2 border-white/10 min-w-[190px] max-w-[190px] sm:min-w-[230px] sm:max-w-[230px] w-[190px] sm:w-[230px] shadow-[2px_0_5px_rgba(0,0,0,0.4)]">
+                      <td 
+                        className="py-2.5 px-3 sm:px-4 text-sm sticky left-0 z-10 min-w-[190px] max-w-[190px] sm:min-w-[230px] sm:max-w-[230px] w-[190px] sm:w-[230px] shadow-[2px_0_5px_rgba(0,0,0,0.4)] border-r border-b transition-colors"
+                        style={{
+                          backgroundColor: '#0f172a',
+                          borderTop: `2px solid ${group.color}`,
+                          borderBottomColor: 'rgba(255,255,255,0.1)'
+                        }}
+                      >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 truncate pr-2" style={{ color: group.color }}>
-                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
-                            <span className="truncate">{group.name}</span>
+                            <div 
+                              className="w-2.5 h-2.5 rounded-full shrink-0" 
+                              style={{ 
+                                backgroundColor: group.color,
+                                boxShadow: `0 0 8px ${group.color}`
+                              }} 
+                            />
+                            <span className="truncate tracking-wide">{group.name}</span>
                           </div>
-                          <button
-                            onClick={() => handleDeleteGroup(group)}
-                            title={`${group.name} Hesabını Sil`}
-                            className="p-1 rounded text-slate-500 hover:text-rose-400 transition-colors shrink-0"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => setEditingGroup(group)}
+                              title={`${group.name} Renk Temasını Değiştir`}
+                              aria-label={`${group.name} renk temasını değiştir`}
+                              className="p-1 rounded-lg hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                              style={{ color: group.color }}
+                            >
+                              <Palette className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteGroup(group)}
+                              title={`${group.name} Hesabını Sil`}
+                              aria-label={`${group.name} hesabını sil`}
+                              className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </td>
-                      <td colSpan={visibleMonths.length} className="bg-slate-900/90 border-b border-t-2 border-white/10"></td>
+                      <td 
+                        colSpan={visibleMonths.length} 
+                        className="border-b transition-colors"
+                        style={{
+                          background: `linear-gradient(90deg, ${group.color}18 0%, ${group.color}06 35%, rgba(15,23,42,0.9) 100%)`,
+                          borderTop: `2px solid ${group.color}70`,
+                          borderBottomColor: 'rgba(255,255,255,0.1)'
+                        }}
+                      />
                     </tr>
 
                     {/* If this account only tracks assets and has no budget items */}
@@ -899,11 +936,21 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
               }
 
               return (
-                <div key={group.id} className="rounded-2xl bg-slate-900/80 border border-white/10 p-4 space-y-3">
+                <div 
+                  key={group.id} 
+                  className="rounded-2xl bg-slate-900/80 border border-white/10 p-4 space-y-3 transition-all"
+                  style={{
+                    borderTop: `3px solid ${group.color}`,
+                    boxShadow: `0 8px 20px -8px ${group.color}25`
+                  }}
+                >
                   <div className="flex items-center justify-between pb-2 border-b border-white/10">
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: group.color }} />
-                      <h4 className="font-bold text-white text-sm">{group.name}</h4>
+                      <div 
+                        className="w-3 h-3 rounded-full shrink-0" 
+                        style={{ backgroundColor: group.color, boxShadow: `0 0 8px ${group.color}` }} 
+                      />
+                      <h4 className="font-bold text-sm" style={{ color: group.color }}>{group.name}</h4>
                     </div>
                     <div className="text-right">
                       <span className="text-xs text-slate-400 mr-1">Kalan:</span>
@@ -1131,13 +1178,26 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         onClose={() => setIsGroupModalOpen(false)}
         title="Yeni Hesap / Kasa Ekle"
       >
-        <div className="space-y-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleCreateGroup();
+          }}
+          className="space-y-4"
+        >
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">Hesap / Kasa Adı</label>
             <input
               type="text"
+              autoFocus
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCreateGroup();
+                }
+              }}
               placeholder="Örn: Ana Hesap, Yatırım Portföyü, Tasarruf Fonu, Ortak Kasa..."
               className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none focus:border-amber-400"
             />
@@ -1145,14 +1205,15 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">Renk Teması</label>
-            <div className="flex items-center gap-2">
-              {['#3b82f6', '#a855f7', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#64748b'].map((c) => (
+            <div className="grid grid-cols-6 sm:grid-cols-9 gap-1.5 p-2 rounded-xl bg-slate-950 border border-white/10">
+              {ACCOUNT_THEME_COLORS.map((c) => (
                 <button
-                  key={c}
+                  key={c.hex}
                   type="button"
-                  onClick={() => setNewGroupColor(c)}
-                  className={`w-7 h-7 rounded-full border-2 transition-transform ${newGroupColor === c ? 'scale-110 border-white' : 'border-transparent'}`}
-                  style={{ backgroundColor: c }}
+                  onClick={() => setNewGroupColor(c.hex)}
+                  title={c.name}
+                  className={`aspect-square rounded-lg border-2 transition-transform cursor-pointer ${newGroupColor.toLowerCase() === c.hex.toLowerCase() ? 'scale-110 border-white' : 'border-transparent'}`}
+                  style={{ backgroundColor: c.hex }}
                 />
               ))}
             </div>
@@ -1160,19 +1221,21 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
           <div className="flex justify-end gap-2 pt-2">
             <button
+              type="button"
               onClick={() => setIsGroupModalOpen(false)}
-              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium"
+              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium cursor-pointer"
             >
               Vazgeç
             </button>
             <button
-              onClick={handleCreateGroup}
-              className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400"
+              type="submit"
+              disabled={!newGroupName.trim()}
+              className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 disabled:opacity-50 cursor-pointer"
             >
               Hesabı Oluştur
             </button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       {/* Add New Account Modal with Pre-selected Group and Dynamic SubTypes */}
@@ -1181,7 +1244,13 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         onClose={() => setIsAccountModalOpen(false)}
         title="Yeni Gelir / Gider Kalemi Ekle"
       >
-        <div className="space-y-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleCreateAccount();
+          }}
+          className="space-y-4"
+        >
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">Bağlı Olduğu Hesap / Kişi</label>
             <select
@@ -1241,8 +1310,15 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             <label className="block text-xs font-medium text-slate-400 mb-1.5">Kalem Adı (Açıklayıcı Başlık)</label>
             <input
               type="text"
+              autoFocus
               value={newAccName}
               onChange={(e) => setNewAccName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCreateAccount();
+                }
+              }}
               placeholder="Örn: Garanti Bonus, Maximum, Ev Kirası, Maaş Geliri..."
               className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none focus:border-amber-400"
             />
@@ -1250,19 +1326,21 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
           <div className="flex justify-end gap-2 pt-2">
             <button
+              type="button"
               onClick={() => setIsAccountModalOpen(false)}
-              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium"
+              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium cursor-pointer"
             >
               Vazgeç
             </button>
             <button
-              onClick={handleCreateAccount}
-              className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400"
+              type="submit"
+              disabled={!newAccName.trim() || !newAccGroupId}
+              className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 disabled:opacity-50 cursor-pointer"
             >
               Kalemi Ekle
             </button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       {/* Modern Confirm Dialog for Deletions */}
@@ -1274,6 +1352,13 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         message={confirmDialog.message}
         confirmText={confirmDialog.confirmText}
         isDestructive={confirmDialog.isDestructive}
+      />
+
+      {/* Edit Account / Theme Color Modal */}
+      <EditAccountModal
+        isOpen={!!editingGroup}
+        onClose={() => setEditingGroup(null)}
+        group={editingGroup}
       />
     </div>
   );

@@ -492,11 +492,21 @@ export const InvestmentPlanner: React.FC<InvestmentPlannerProps> = ({
               const gPct = gAllocated > 0 ? Math.min(100, Math.round((gActual / gAllocated) * 100)) : 0;
 
               return (
-                <div key={group.id} className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-3 shadow-md">
+                <div 
+                  key={group.id} 
+                  className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-3 shadow-md transition-all"
+                  style={{
+                    borderTop: `3px solid ${group.color}`,
+                    boxShadow: `0 8px 20px -8px ${group.color}25`
+                  }}
+                >
                   <div className="flex items-center justify-between pb-2 border-b border-white/10">
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: group.color }} />
-                      <h4 className="font-bold text-white text-sm">{group.name} Hedefi</h4>
+                      <div 
+                        className="w-3 h-3 rounded-full shrink-0" 
+                        style={{ backgroundColor: group.color, boxShadow: `0 0 8px ${group.color}` }} 
+                      />
+                      <h4 className="font-bold text-sm" style={{ color: group.color }}>{group.name} Hedefi</h4>
                     </div>
                     <button
                       onClick={() => setSelectedGroupId(group.id)}

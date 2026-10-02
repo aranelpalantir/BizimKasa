@@ -141,7 +141,7 @@ export async function exportEncryptedBackup(password: string): Promise<void> {
   const dateStr = new Date().toISOString().split('T')[0];
   const a = document.createElement('a');
   a.href = url;
-  a.download = `bizimkasa-sifreli-yedek-${dateStr}.enc.json`;
+  a.download = `bizimkasa-sifreli-yedek-${dateStr}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

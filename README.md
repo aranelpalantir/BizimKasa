@@ -1,11 +1,13 @@
 # 🪙 BizimKasa
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version: v1.1.0](https://img.shields.io/badge/Version-v1.1.0-blue.svg)](#)
 [![PWA: Offline Ready](https://img.shields.io/badge/PWA-Offline%20Ready-00d2ff.svg?logo=pwa&logoColor=white)](#)
 [![Cloudflare Pages](https://img.shields.io/badge/Deployed%20with-Cloudflare%20Pages-F38020.svg?logo=cloudflare)](https://bizimkasa.pages.dev/)
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-bizimkasa.pages.dev-success.svg)](https://bizimkasa.pages.dev/)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-BizimKasa-181717.svg?logo=github&logoColor=white)](https://github.com/aranelpalantir/BizimKasa)
 [![Mobile: iOS & Android](https://img.shields.io/badge/Mobile-iOS%20%7C%20Android-black.svg?logo=apple&logoColor=white)](#)
+[![E2E Tests: 26 Passing](https://img.shields.io/badge/Playwright%20E2E-26%20Passing-success.svg?logo=playwright&logoColor=white)](#)
 [![AI-Assisted](https://img.shields.io/badge/Developed%20with-AI%20Pair%20Programming-8A2BE2.svg)](#)
 
 > *"Finansal verileriniz yalnızca size aittir — Sıfır sunucu bağımlılığı, tam veri gizliliği, sınırsız kontrol ve cebinizdeki yerel güç."*
@@ -26,63 +28,57 @@ Uygulamaya tarayıcınızdan veya telefonunuzdan doğrudan erişebilirsiniz:
 
 ## ✨ Öne Çıkan Özellikler
 
-### 1. 📊 Dinamik Aylık Bütçe & Nakit Akışı Matrisi (Yıllık Görünüm & Konsolide Rapor)
+### 1. 📊 Dinamik Aylık Bütçe & Nakit Akışı Matrisi (Yıllık & Aylık Görünüm)
 - **Çoklu Hesap / Portföy Hiyerarşisi:** Ana Hesap, Yatırım Portföyü, Tasarruf Fonu veya Ortak Kasa gibi dilediğiniz sayıda bağımsız hesap tanımlama.
-- **Kartlar, Gelirler ve Giderler:** Her hesaba bağlı kredi kartları, maaş kalemleri, kira/faturalar ve dinamik varlık akışları.
-- **Yıllık & Aylık Görünüm:** Aylara yayılan nakit akışı tablosu (Ocak'tan Aralık'a dinamik yıl gezintisi).
-- **Otomatik Toplamlar:** Hesap bazında `Hesap Gider`, `Hesap Gelir` ve `Hesap Kalan (Gelir - Gider)`.
-- **Konsolide Bütçe Raporu:** Tablonun en altında tüm hesap ve kasaların birleşik `Genel Gider`, `Genel Gelir` ve `Genel Kalan` net nakit durumu.
+- **Kartlar, Gelirler ve Giderler:** Her hesaba bağlı kredi kartları, maaş kalemleri, kira/faturalar ve dinamik nakit akışları.
+- **Esnek Dönem Görünümü:** İster yakın döneme (geçen ay ve sonraki 3 ay) odaklanın, ister 12 aylık tam yıl tablosunu izleyin.
+- **Konsolide Nakit Raporu:** Hesap bazında ve tüm kasaların toplamında birleşik Genel Gelir, Genel Gider ve Genel Kalan net nakit durumu.
 - **Hızlı Hücre Düzenleme:** Herhangi bir hücreye dokunarak tutarı doğrudan yerinde güncelleme.
 - **Dinamik Grup Filtresi:** Tek tıkla sadece ortak kasayı veya şahsi hesapları filtreleyebilme.
 
-### 2. 🎯 Aylık Yatırım & Birikim Hedef Planlayıcısı (Target & Budget Planner)
-- **Aylık Birikim Hedefleri:** Ay bazında altın (gram/çeyrek), döviz (USD/EUR), TEFAS fonu veya nakit tasarruf hedefleri belirleme.
+### 2. 🎨 Hesap Renk Temaları & Bütünsel Kişiselleştirme
+- **18 Canlı Renk Paleti:** Her hesaba veya kasaya özgü 18 modern tema rengi (veya özel HEX kodu) belirleyebilme.
+- **Hızlı Değiştirme:** Filtre çubuğundaki palet (`🎨`) ikonuyla veya Ayarlar menüsünden dilediğiniz an tek tıkla hesap temasını güncelleme.
+- **Dinamik Ambiyans (Neon Glow):** Seçili hesabın rengine göre filtre çubuğunda neon glow ışıltısı, Dashboard'da dinamik net varlık kartı aurası ve bütçe matrisinde belirgin renk hiyerarşisi.
+
+### 3. 🪙 Altın, Döviz & TEFAS Fon Portföyü
+- **Altın (Gram & Çeyrek):** Ağırlıklı ortalama birim maliyet (`Ort. Brm. Mlyt.`), güncel piyasa değeri, net kâr/zarar (₺ ve %) ve çeyrek altın çeşitleri (Çeyrek, Yarım, Tam, Cumhuriyet).
+- **Çok Yıllı Döviz Matrisi:** USD ve EUR birikimleri, yıllara yayılan nakit akışı, ortalama kur maliyeti ve anlık TL karşılığı.
+- **TEFAS Fonları & Borsa:** BIST hisseleri ve TEFAS fonları için anlık canlı fiyatlama, dinamik portföy ağırlığı ve net getiri.
+- **Toplu Hareket Yönetimi & CSV İçe Aktarma:** Alım/satım işlemlerini onay kutularıyla çoklu seçip tek seferde silebilme (`bulkDelete`); geçmiş verileri CSV ve metin yapıştırarak içeri aktarma.
+
+### 4. 🎯 Aylık Yatırım & Birikim Hedef Planlayıcısı (Target & Budget Planner)
+- **Aylık Birikim Hedefleri:** Ay bazında altın, döviz, TEFAS fonu veya nakit tasarruf hedefleri belirleme.
 - **Gerçekleşenlerle Otomatik Eşleştirme:** Kayıtlı varlık işlemlerini hedef kartlarına bağlama ve hedefin gerçekleşme yüzdesini canlı izleme.
-- **🎉 Konfeti Kutlaması:** Ayın yatırım hedefleri tamamlandığında veya onaylandığında motive edici görsel konfeti kutlaması (`canvas-confetti`).
+- **🎉 Konfeti Kutlaması:** Ayın yatırım hedefleri tamamlandığında motive edici görsel konfeti kutlaması (`canvas-confetti`).
 - **Disiplinli Birikim Takibi:** Hedeflenen bütçe ile gerçekleşen birikim tutarını anlık kıyaslama.
 
-### 3. 🪙 Altın Portföyü & Maliyet Takibi (Gram & Çeyrek)
-- **Gram Altın:** Aylık alımlar (gram & TL), ağırlıklı ortalama birim maliyet (`Ort. Brm. Mlyt.`), güncel piyasa değeri ve net kâr/zarar (₺ ve %).
-- **Çeyrek Altın:** Adet bazlı fiziki birikim, alımlar, maliyet ve kâr/zarar hesabı.
-- **Geçmiş Hareketler:** Tüm alım/satım işlemlerinin eksiksiz tarihçesi, tek tıkla düzenleme ve silme.
-- **Toplu İçe Aktarma (Import):** Geçmiş altın alımlarını metin yapıştırarak veya CSV formatında saniyeler içinde içeri aktarma.
-
-### 4. 💶 Çok Yıllı Döviz Matrisi (Euro & Dolar)
-- **Çok Yıllı Hareketler:** Yıllara (2023, 2024, 2025, 2026...) ve aylara yayılan döviz hareket matrisi.
-- **Alım & Satım Dengesi:** Pozitif değerler döviz alımını, negatif değerler bozdurulan/harcanan dövizi temsil eder.
-- **Kümülatif Bakiye:** Toplam net döviz birikimi, ortalama kur maliyeti ve anlık TL karşılığı.
-
-### 5. 📈 TEFAS Fonları & Borsa Portföyü
-- **Geniş Fon Desteği:** `MAC`, `GSP`, `DVT`, `IIH` vb. tüm TEFAS fonları ve borsa hisse varlıkları.
-- **Detaylı Metrikler:** Fon bazında **Maliyet**, **Güncel Değer**, **Kâr/Zarar (TL)**, **Kâr/Zarar Oranı (%)** ve **Portföy Ağırlığı (%)**.
-- **Canlı Fon Değerleme:** Canlı TEFAS fiyat araması ve otomatik fiyat güncelleme motoru.
-
-### 6. ⚖️ Reel Kâr / Zarar & Satın Alma Gücü Karşılığı
+### 5. ⚖️ Reel Kâr / Zarar & Satın Alma Gücü Karşılığı
 - *"TL olarak kârdayım ama enflasyona ve kurlara karşı reel durumum ne?"* sorusuna net yanıt:
   - **₺ Nominal Kâr/Zarar**
   - **$ Karşılığı** (USD bazında reel değer)
   - **€ Karşılığı** (EUR bazında reel değer)
   - **Altın Karşılığı** (Gram altın bazında reel getiri)
 
-### 7. ⚡ Canlı Piyasa Kurları & Serbest Piyasa Makası
+### 6. ⚡ Canlı Piyasa Kurları & Serbest Piyasa Makası
 - **Kapsamlı Takip:** USD, EUR, Gram Altın, Çeyrek Altın, Ons ($), BIST 100, Nasdaq-100 ve TEFAS fonları.
 - **Serbest Piyasa Makası:** Kur kartına dokunarak Kapalıçarşı veya banka makas kurunu manuel girebilme veya tek tıkla canlı kura geri dönebilme.
 - **Kesintisiz & Çok Kaynaklı:** Ağ hatası durumunda alternatif API kaynaklarına düşen dayanıklı kur motoru.
 
-### 8. 🔒 Güvenlik, Gizlilik & Biyometrik Kilit
+### 7. 🔒 Güvenlik, Gizlilik & Biyometrik Kilit
 - **Biyometrik Kilit (WebAuthn):** iPhone'da **FaceID / TouchID**, Android'de **Parmak İzi / Yüz Tanıma**, Windows'ta **Windows Hello**.
-- **Sayısal PIN Koruması:** 4-6 haneli güvenli PIN klavyesi.
+- **Sayısal PIN Koruması:** 4-6 haneli güvenli PIN klavyesi ve hassas işlemler öncesi adım yükseltme (step-up) PIN doğrulaması.
 - **Otomatik Kilit:** Uygulama arka plana atıldığında veya ekran kapandığında belirlenen sürede otomatik kilitlenme (Anında, 1 dk, 5 dk, 15 dk).
 - **Gizlilik Maskesi (Göz İkonu):** Toplu taşımada veya kalabalık ortamlarda bakiyeleri tek tıkla gizleme/maskeleme (`•••• ₺`).
 
-### 9. 💾 %100 Local-First & Askeri Düzeyde Şifreli Yedekleme (AES-256-GCM)
+### 8. 💾 %100 Local-First & Askeri Düzeyde Şifreli Yedekleme (AES-256-GCM)
 - **Tam Veri Sahipliği:** Verileriniz **asla hiçbir uzak sunucuya gönderilmez**. Tamamen tarayıcınızın kalıcı yerel veritabanında (**IndexedDB / Dexie.js**) saklanır.
-- **🛡️ Şifreli Yedek İndir (AES-256-GCM):** Belirleyeceğiniz parola ile Web Crypto API standartlarında şifrelenmiş `.enc.json` yedek dosyası oluşturun.
-  - **Anahtar Türetme (KDF):** **PBKDF2-SHA256** ile 100.000 iterasyon ve dosya bazında benzersiz 16-byte kriptografik tuz (*salt*) ile parolanızdan 256-bit AES anahtarı türetilir (Kaba kuvvet / Brute-force zırhı).
-  - **Şifreleme & Bütünlük:** **AES-256-GCM** (Galois/Counter Mode) ile 12-byte rastgele başlatma vektörü (*IV*) ve dahili bütünlük doğrulama etiketi (*Auth Tag*) kullanılarak veriler şifrelenir.
-  - **Kerckhoffs Prensibi Güvencesi:** Dosya başlığındaki `salt`, `iv` ve `iterations` parametreleri şifre çözme standardı gereğidir (1Password, Bitwarden, KeePass, BitLocker mimarisiyle birebir aynıdır). Parolanız ve anahtarınız dosyada **asla yer almaz**. Bu sayede yedeğinizi Google Drive, iCloud veya e-postanızda sıfır riskle saklayabilirsiniz.
-- **Standart Yedek İndir (JSON):** Dilerseniz hızlı kullanım ve arşiv için açık metin JSON yedeği de alabilirsiniz.
-- **Akıllı Geri Yükleme (Otomatik Algılama):** Seçtiğiniz yedek dosyasının şifreli olup olmadığı anında algılanır; şifreli ise şık bir parola çözme ekranı açılır, parola doğruysa verileriniz saniyeler içinde eksiksiz geri yüklenir.
+- **🛡️ Şifreli Yedek İndir (AES-256-GCM):** Belirleyeceğiniz parola ile Web Crypto API standartlarında şifrelenmiş `.json` yedek dosyası oluşturun (`bizimkasa-sifreli-yedek-YYYY-MM-DD.json`).
+  - **PBKDF2-SHA256 (100.000 İterasyon):** Kaba kuvvet (brute-force) saldırılarına karşı tuzlanmış (salted) 256-bit AES anahtar türetimi.
+  - **AES-256-GCM Bütünlük Zırhı:** 12-byte rastgele başlatma vektörü (*IV*) ve dahili bütünlük doğrulama etiketi (*Auth Tag*) ile sıfır veri manipülasyonu.
+  - **Bulut & Mobil Uyumluluğu:** Google Drive, iCloud veya yerel dosya yöneticilerinde sıfır riskle saklayıp mobil cihazlardan doğrudan geri yükleyebilme.
+- **Standart Yedek İndir (JSON):** Hızlı kullanım ve açık metin arşivleme için standart JSON yedeği.
+- **Akıllı Geri Yükleme:** Seçilen dosyanın şifreli olup olmadığını anında algılama ve parola doğrulama ekranıyla tek tıkla geri yükleme.
 
 > [!NOTE]
 > **Güvenli Bağlantı (HTTPS / Secure Context) Kuralı:** Apple (iOS Safari) ve W3C güvenlik standartları gereği Web Crypto API (`crypto.subtle`) ve Biyometrik sensörler (FaceID/TouchID) yalnızca güvenli bağlantılarda (**HTTPS** veya yerel `localhost`) çalışır. Telefonunuzdan yerel ağ IP'si (`http://192.168.x.x`) üzerinden girildiğinde mobil tarayıcılar bu API'leri güvenlik amacıyla engeller. **Cloudflare Pages (`https://...`)** üzerinde canlıya alındığında hem FaceID hem de AES-256 şifreleme telefonunuzda sorunsuz ve tam performansla çalışır.
@@ -101,7 +97,7 @@ Uygulamaya tarayıcınızdan veya telefonunuzdan doğrudan erişebilirsiniz:
 | **Grafik & Görsel** | Recharts | Varlık dağılımı ve portföy pasta grafikleri |
 | **İkonlar** | Lucide React | Modern ve tutarlı arayüz ikon seti |
 | **Efektler** | Canvas-Confetti | Hedef tamamlandığında motive edici konfeti kutlaması |
-| **Test & Kalite** | Playwright E2E | Uçtan uca otomatik test senaryoları (21 test) |
+| **Test & Kalite** | Playwright E2E | Uçtan uca otomatik test senaryoları (26 test) |
 | **PWA & Offline** | Vite Plugin PWA (Workbox) | Çevrimdışı önbellekleme, Service Worker ve mobil kurulum |
 
 ---
@@ -112,13 +108,14 @@ Uygulamaya tarayıcınızdan veya telefonunuzdan doğrudan erişebilirsiniz:
 BizimKasa/
 ├── src/
 │   ├── components/
-│   │   ├── assets/           # Altın, Döviz, Fon takip ve Toplu İçe Aktarım panelleri
+│   │   ├── assets/           # Altın, Döviz, Fon takip, Toplu Silme ve İçe Aktarım panelleri
 │   │   ├── auth/             # Biyometrik (WebAuthn) ve PIN Kilit Ekranı
 │   │   ├── budget/           # Yıllık ve aylık bütçe & nakit akışı matris bileşenleri
-│   │   ├── common/           # Navbar, Alt Gezinme Barı (BottomNav), Modallar, Filtreler
+│   │   ├── common/           # Navbar, BottomNav, Hesap Düzenleme & Renk Modalı, Filtreler
 │   │   ├── dashboard/        # Konsolide Net Varlık Kartı, Varlık Dağılım Grafiği, Kurlar
 │   │   ├── investment/       # Aylık Yatırım & Birikim Hedef Planlayıcısı (Konfeti kutlamalı)
 │   │   └── settings/         # Şifreli/Standart Yedekleme, Geri Yükleme ve Güvenlik Ayarları
+│   ├── constants/            # 18 renk seçeneği ve tema yardımcıları (themeColors.ts)
 │   ├── db/                   # Dexie.js IndexedDB şeması ve başlangıç tohum verileri
 │   ├── services/             # Portföy motoru, canlı kurlar, Web Crypto API ve güvenlik servisleri
 │   │   ├── cryptoService.ts  # AES-256-GCM ve PBKDF2 Web Crypto API motoru
@@ -126,9 +123,10 @@ BizimKasa/
 │   │   ├── securityService.ts# PIN hashing, WebAuthn FaceID/TouchID doğrulama
 │   │   ├── ratesService.ts   # Canlı serbest piyasa ve TEFAS kurları
 │   │   └── portfolioService.ts# Konsolide portföy ve kâr/zarar hesaplama motoru
-│   └── types/                # Finansal veri modelleri ve TypeScript tip tanımları
+│   ├── types/                # Finansal veri modelleri ve TypeScript tip tanımları
+│   └── version.ts            # Uygulama sürümü ve derleme meta verileri (v1.1.0)
 ├── public/                   # PWA ikonları, web manifest ve statik varlıklar
-├── e2e/                      # Playwright uçtan uca test senaryoları (21 test)
+├── e2e/                      # Playwright uçtan uca test senaryoları (26 test)
 ├── index.html                # PWA başlangıç HTML şablonu
 ├── vite.config.ts            # Vite & VitePWA servis çalıştırıcı yapılandırması
 └── package.json              # Bağımlılıklar ve npm scriptleri

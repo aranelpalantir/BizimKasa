@@ -40,6 +40,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   const [historyPage, setHistoryPage] = useState<number>(1);
   const itemsPerPage = 10;
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
 
   // New Transaction Form
   const [targetGroupId, setTargetGroupId] = useState<string>(groups[0]?.id || '');
@@ -501,6 +502,47 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
     setEditingTx(null);
   };
 
+  const handleSelectGoldType = (type: GoldTypeTab) => {
+    setActiveGoldType(type);
+    setSelectedTxIds(new Set());
+  };
+
+  const handleToggleSelectTx = (id: string) => {
+    setSelectedTxIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const isAllSelected = filteredTxs.length > 0 && filteredTxs.every(t => selectedTxIds.has(t.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedTxIds(new Set());
+    } else {
+      setSelectedTxIds(new Set(filteredTxs.map(t => t.id)));
+    }
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedTxIds.size === 0) return;
+    const count = selectedTxIds.size;
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Seçilen İşlemleri Sil',
+      message: `${count} adet altın hareket kaydını kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`,
+      onConfirm: async () => {
+        await db.transactions.bulkDelete(Array.from(selectedTxIds));
+        setSelectedTxIds(new Set());
+      }
+    });
+  };
+
   const handleDeleteTx = (id: string) => {
     setConfirmDialog({
       isOpen: true,
@@ -508,6 +550,11 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
       message: 'Bu altın alış/satış kaydını silmek istediğinize emin misiniz?',
       onConfirm: async () => {
         await db.transactions.delete(id);
+        setSelectedTxIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     });
   };
@@ -578,7 +625,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5">
         <div className="flex flex-wrap p-1 rounded-xl bg-slate-800 border border-white/5">
           <button
-            onClick={() => setActiveGoldType('BANK_GRAM')}
+            onClick={() => handleSelectGoldType('BANK_GRAM')}
             className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
               activeGoldType === 'BANK_GRAM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
@@ -587,7 +634,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             <span>Banka Gram Altın</span>
           </button>
           <button
-            onClick={() => setActiveGoldType('PHYSICAL_GRAM')}
+            onClick={() => handleSelectGoldType('PHYSICAL_GRAM')}
             className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
               activeGoldType === 'PHYSICAL_GRAM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
@@ -596,7 +643,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             <span>Fiziki Gram Altın</span>
           </button>
           <button
-            onClick={() => setActiveGoldType('CEYREK')}
+            onClick={() => handleSelectGoldType('CEYREK')}
             className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
               activeGoldType === 'CEYREK' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
@@ -605,7 +652,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             <span>Çeyrek Altın</span>
           </button>
           <button
-            onClick={() => setActiveGoldType('YARIM')}
+            onClick={() => handleSelectGoldType('YARIM')}
             className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
               activeGoldType === 'YARIM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
@@ -614,7 +661,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             <span>Yarım Altın</span>
           </button>
           <button
-            onClick={() => setActiveGoldType('TAM')}
+            onClick={() => handleSelectGoldType('TAM')}
             className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
               activeGoldType === 'TAM' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
@@ -623,7 +670,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             <span>Tam Altın</span>
           </button>
           <button
-            onClick={() => setActiveGoldType('CUMHURIYET')}
+            onClick={() => handleSelectGoldType('CUMHURIYET')}
             className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
               activeGoldType === 'CUMHURIYET' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
@@ -646,59 +693,74 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
       <GroupFilterBar
         groups={groupsWithGold.length > 0 ? groupsWithGold : groups}
         selectedGroupId={selectedGroupId}
-        onSelectGroup={setSelectedGroupId}
+        onSelectGroup={(g) => {
+          setSelectedGroupId(g);
+          setSelectedTxIds(new Set());
+        }}
         title="Hesap"
       />
 
       {/* METRIC HEADER */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 p-4 rounded-2xl bg-slate-900/90 border border-white/10 shadow-lg">
-        <div className="flex flex-col">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase">
-            Toplam Değer
-          </span>
-          <span className="text-base sm:text-lg font-bold text-white mt-1 font-mono">
-            {formatTRY(currentValueTRY, hideValues)}
-          </span>
-          <span className="text-[10px] text-slate-500">
-            {formatNumber(currentHoldingQty, isPieceGold ? 0 : 2, hideValues)} {unitLabel}
-          </span>
-        </div>
+      {(() => {
+        const activeGroup = selectedGroupId !== 'ALL' ? groups.find(g => g.id === selectedGroupId) : undefined;
+        return (
+          <div 
+            className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 p-4 rounded-2xl bg-slate-900/90 border border-white/10 shadow-lg transition-all"
+            style={{
+              borderTop: activeGroup ? `3px solid ${activeGroup.color}` : undefined,
+              boxShadow: activeGroup ? `0 10px 25px -8px ${activeGroup.color}25` : undefined
+            }}
+          >
+            <div className="flex flex-col">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase flex items-center gap-1.5">
+                {activeGroup && <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: activeGroup.color }} />}
+                <span>Toplam Değer</span>
+              </span>
+              <span className="text-base sm:text-lg font-bold text-white mt-1 font-mono">
+                {formatTRY(currentValueTRY, hideValues)}
+              </span>
+              <span className="text-[10px] text-slate-500">
+                {formatNumber(currentHoldingQty, isPieceGold ? 0 : 2, hideValues)} {unitLabel}
+              </span>
+            </div>
 
-        <div className="flex flex-col border-l border-white/10 pl-2.5">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase">Maliyet</span>
-          <span className="text-base sm:text-lg font-bold text-slate-200 mt-1 font-mono">
-            {formatTRY(currentCostBasisTRY, hideValues)}
-          </span>
-          <span className="text-[10px] text-slate-500">Mevcut Varlık Maliyeti</span>
-        </div>
+            <div className="flex flex-col border-l border-white/10 pl-2.5">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase">Maliyet</span>
+              <span className="text-base sm:text-lg font-bold text-slate-200 mt-1 font-mono">
+                {formatTRY(currentCostBasisTRY, hideValues)}
+              </span>
+              <span className="text-[10px] text-slate-500">Mevcut Varlık Maliyeti</span>
+            </div>
 
-        <div className="flex flex-col border-l border-white/10 pl-2.5">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase">Kâr / Zarar</span>
-          <span className={`text-base sm:text-lg font-bold mt-1 font-mono ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {isProfit ? '+' : ''}{formatTRY(profitLossTRY, hideValues)}
-          </span>
-          <span className="text-[10px] text-slate-500">Net Getiri</span>
-        </div>
+            <div className="flex flex-col border-l border-white/10 pl-2.5">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase">Kâr / Zarar</span>
+              <span className={`text-base sm:text-lg font-bold mt-1 font-mono ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {isProfit ? '+' : ''}{formatTRY(profitLossTRY, hideValues)}
+              </span>
+              <span className="text-[10px] text-slate-500">Net Getiri</span>
+            </div>
 
-        <div className="flex flex-col border-l border-white/10 pl-2.5">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase">Kâr / Zarar %</span>
-          <div className={`flex items-center gap-0.5 text-base sm:text-lg font-bold mt-1 font-mono ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {isProfit ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-            <span>%{formatNumber(Math.abs(profitLossPct), 2)}</span>
+            <div className="flex flex-col border-l border-white/10 pl-2.5">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase">Kâr / Zarar %</span>
+              <div className={`flex items-center gap-0.5 text-base sm:text-lg font-bold mt-1 font-mono ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {isProfit ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                <span>%{formatNumber(Math.abs(profitLossPct), 2)}</span>
+              </div>
+              <span className="text-[10px] text-slate-500">Yüzdesel Oran</span>
+            </div>
+
+            <div className="flex flex-col col-span-2 sm:col-span-1 border-t sm:border-t-0 sm:border-l border-white/10 pt-2 sm:pt-0 sm:pl-2.5">
+              <span className="text-[11px] font-semibold text-amber-400 uppercase">Ort. Brm. Mlyt.</span>
+              <span className="text-base sm:text-lg font-bold text-amber-300 mt-1 font-mono">
+                {formatTRY(avgUnitCost, hideValues)}
+              </span>
+              <span className="text-[10px] text-slate-500">
+                Güncel: {formatTRY(currentRate, hideValues)}
+              </span>
+            </div>
           </div>
-          <span className="text-[10px] text-slate-500">Yüzdesel Oran</span>
-        </div>
-
-        <div className="flex flex-col col-span-2 sm:col-span-1 border-t sm:border-t-0 sm:border-l border-white/10 pt-2 sm:pt-0 sm:pl-2.5">
-          <span className="text-[11px] font-semibold text-amber-400 uppercase">Ort. Brm. Mlyt.</span>
-          <span className="text-base sm:text-lg font-bold text-amber-300 mt-1 font-mono">
-            {formatTRY(avgUnitCost, hideValues)}
-          </span>
-          <span className="text-[10px] text-slate-500">
-            Güncel: {formatTRY(currentRate, hideValues)}
-          </span>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* MULTI-YEAR MONTHLY MOVEMENT MATRIX (Yıllar x Aylar) */}
       <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl">
@@ -876,11 +938,25 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
       {/* TRANSACTION HISTORY WITH DATE FILTERS & PAGINATION */}
       <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-            <History className="w-3.5 h-3.5 text-amber-400" />
-            <span>Alış & Satış Hareket Geçmişi</span>
-            <span className="text-[10px] text-slate-400 font-normal">({filteredTxs.length} İşlem)</span>
-          </h4>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              ref={(el) => {
+                if (el) {
+                  el.indeterminate = selectedTxIds.size > 0 && !isAllSelected;
+                }
+              }}
+              onChange={handleToggleSelectAll}
+              className="w-4 h-4 rounded border-white/20 bg-slate-950 text-amber-500 focus:ring-0 cursor-pointer accent-amber-500"
+              title={isAllSelected ? 'Tüm seçimleri kaldır' : 'Tüm filtrelenmiş işlemleri seç'}
+            />
+            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5 text-amber-400" />
+              <span>Alış & Satış Hareket Geçmişi</span>
+              <span className="text-[10px] text-slate-400 font-normal">({filteredTxs.length} İşlem)</span>
+            </h4>
+          </div>
 
           {/* Quick Filter Chips */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
@@ -908,6 +984,42 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Batch Selection Action Bar */}
+        {selectedTxIds.size > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-amber-300">
+                {selectedTxIds.size} işlem seçildi
+              </span>
+              <button
+                type="button"
+                onClick={handleToggleSelectAll}
+                className="text-[11px] text-slate-400 hover:text-white underline ml-1"
+              >
+                {isAllSelected ? 'Seçimi Kaldır' : `Tümünü Seç (${filteredTxs.length})`}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedTxIds(new Set())}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition-colors"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={handleBatchDelete}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-[11px] transition-colors shadow-sm active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Seçilenleri Sil ({selectedTxIds.size})</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Extended Filter Bar: Year & Custom Date Range */}
         <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5 text-xs">
@@ -978,13 +1090,25 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
             {paginatedTxs.map((tx) => {
               const acc = accounts.find(a => a.id === tx.accountId);
               const grp = groups.find(g => g.id === acc?.groupId || g.id === tx.groupId);
+              const isSelected = selectedTxIds.has(tx.id);
 
               return (
                 <div
                   key={tx.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/50 border border-white/5 text-xs"
+                  className={`flex items-center justify-between p-2.5 rounded-xl border text-xs transition-colors ${
+                    isSelected
+                      ? 'bg-amber-500/10 border-amber-500/40 shadow-sm'
+                      : 'bg-slate-950/50 border-white/5 hover:border-white/10'
+                  }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleSelectTx(tx.id)}
+                      className="w-4 h-4 rounded border-white/20 bg-slate-950 text-amber-500 focus:ring-0 cursor-pointer accent-amber-500 flex-shrink-0"
+                      title="İşlemi seç"
+                    />
                     <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
                       tx.type === 'BUY' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
                     }`}>

@@ -16,11 +16,19 @@ import {
   Eye,
   EyeOff,
   Smartphone,
-  ExternalLink
+  ExternalLink,
+  Info,
+  Palette,
+  Plus
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GithubIcon } from '../common/GithubIcon';
+import { EditAccountModal } from '../common/EditAccountModal';
+import { AddAccountModal } from '../common/AddAccountModal';
+import { getThemeColorName } from '../../constants/themeColors';
+import { db } from '../../db/db';
+import { APP_VERSION, APP_BUILD_DATE } from '../../version';
 import { hashPin, verifyPin, registerBiometrics, updateSettings } from '../../services/securityService';
 import { 
   exportDatabaseToJSON, 
@@ -31,10 +39,11 @@ import {
   resetToSampleData, 
   clearAllDatabaseData 
 } from '../../services/exportService';
-import type { AppSettings } from '../../types/finance';
+import type { AppSettings, Group } from '../../types/finance';
 
 interface SettingsViewProps {
   settings: AppSettings;
+  groups: Group[];
   onRefreshSettings: () => void;
   onLock: () => void;
   onOpenInstallModal?: () => void;
@@ -53,6 +62,7 @@ interface PinAuthRequest {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   settings,
+  groups,
   onRefreshSettings,
   onLock,
   onOpenInstallModal,
@@ -60,6 +70,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   deferredPrompt,
   onTriggerInstall
 }) => {
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -86,6 +98,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showImportPassword, setShowImportPassword] = useState(false);
   const [decryptError, setDecryptError] = useState<string | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
+
+  // Version and Cache Refresh state
+  const [isRefreshingCache, setIsRefreshingCache] = useState(false);
+
+  const handleForceCacheRefresh = async () => {
+    setIsRefreshingCache(true);
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.update();
+        }
+      }
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(name => caches.delete(name)));
+      }
+    } catch (err) {
+      console.warn('Önbellek temizleme hatası:', err);
+    }
+    window.location.reload();
+  };
 
   // Input refs for automatic focus when modals open
   const currentPinInputRef = useRef<HTMLInputElement>(null);
@@ -641,6 +675,112 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       </div>
 
+      {/* SECTION: ACCOUNTS & COLOR THEMES */}
+      <div className="rounded-3xl bg-slate-900/80 border border-white/5 p-5 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
+              <Palette className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Hesaplar ve Renk Temaları</h3>
+              <p className="text-xs text-slate-400">Hesaplarınızı yönetin, adlarını ve renk temalarını kişiselleştirin</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsAddAccountModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>Yeni Hesap</span>
+          </button>
+        </div>
+
+        {/* List of Accounts */}
+        <div className="space-y-2.5">
+          {groups.map((grp) => (
+            <div
+              key={grp.id}
+              className="p-3.5 rounded-2xl bg-slate-950/60 border border-white/5 hover:border-white/15 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border shadow-md transition-transform"
+                  style={{
+                    backgroundColor: `${grp.color}25`,
+                    borderColor: grp.color
+                  }}
+                >
+                  <div
+                    className="w-3.5 h-3.5 rounded-full"
+                    style={{ backgroundColor: grp.color }}
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-white">{grp.name}</span>
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{
+                        backgroundColor: `${grp.color}15`,
+                        color: grp.color
+                      }}
+                    >
+                      {getThemeColorName(grp.color)}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-500 uppercase">
+                    HEX: {grp.color}
+                  </span>
+                </div>
+              </div>
+
+              {/* Quick swatch buttons & Edit button */}
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                {/* 5 popular quick-switch swatches */}
+                <div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1 rounded-xl border border-white/5">
+                  {['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#a855f7'].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={async () => {
+                        await db.groups.update(grp.id, { color: c });
+                      }}
+                      title={`${getThemeColorName(c)} yap`}
+                      className={`w-4 h-4 rounded-full transition-transform cursor-pointer ${
+                        grp.color.toLowerCase() === c.toLowerCase()
+                          ? 'scale-125 ring-2 ring-white ring-offset-1 ring-offset-slate-900'
+                          : 'opacity-70 hover:opacity-100 hover:scale-110'
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setEditingGroup(grp)}
+                  title={`${grp.name} Renk Temasını Değiştir`}
+                  aria-label={`${grp.name} rengini değiştir`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-white/10 hover:border-amber-400/30 transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  <Palette className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Rengi Değiştir</span>
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {groups.length === 0 && (
+            <div className="text-center py-6 text-slate-500 text-xs">
+              Henüz tanımlı bir hesap bulunmuyor.
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* SECTION 2: BACKUP & RESTORE */}
       <div className="rounded-3xl bg-slate-900/80 border border-white/5 p-5 space-y-4">
         <div className="flex items-center gap-2.5 pb-2 border-b border-white/10">
@@ -697,7 +837,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>Yedekten Geri Yükle</span>
             <input
               type="file"
-              accept=".json"
+              accept=".json,.enc.json,application/json,text/plain"
               onChange={handleFileImport}
               className="hidden"
             />
@@ -786,8 +926,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </p>
       </div>
 
+      {/* SECTION 4: VERSION & CACHE UPDATE */}
+      <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 shrink-0">
+            <Info className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white">Bizim Kasa</span>
+              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                v{APP_VERSION}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-400 block mt-0.5">
+              Son Güncelleme: {APP_BUILD_DATE} • Yerel Sürüm
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleForceCacheRefresh}
+          disabled={isRefreshingCache}
+          className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium border border-white/5 active:scale-95 transition-all shrink-0 cursor-pointer disabled:opacity-50 shadow-sm"
+          title="Servis işçisi ve tarayıcı önbelleğini temizleyerek en güncel sürümü yükler"
+        >
+          <RotateCcw className={`w-3.5 h-3.5 ${isRefreshingCache ? 'animate-spin text-amber-400' : ''}`} />
+          <span>{isRefreshingCache ? 'Yenileniyor...' : 'Sürümü Yenile & Önbelleği Temizle'}</span>
+        </button>
+      </div>
+
       {/* Minimal Footer */}
-      <div className="pt-1 pb-4 flex items-center justify-center text-[11px] text-slate-500">
+      <div className="pt-1 pb-4 flex flex-col sm:flex-row items-center justify-center gap-2 text-[11px] text-slate-500">
+        <span className="font-mono">Bizim Kasa v{APP_VERSION}</span>
+        <span className="hidden sm:inline opacity-40">•</span>
         <a
           href="https://github.com/aranelpalantir/BizimKasa"
           target="_blank"
@@ -1168,6 +1341,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         message={confirmState.message}
         confirmText={confirmState.confirmText}
         isDestructive={confirmState.isDestructive}
+      />
+
+      {/* Edit Account Modal */}
+      <EditAccountModal
+        isOpen={!!editingGroup}
+        onClose={() => setEditingGroup(null)}
+        group={editingGroup}
+      />
+
+      {/* Add Account Modal */}
+      <AddAccountModal
+        isOpen={isAddAccountModalOpen}
+        onClose={() => setIsAddAccountModalOpen(false)}
       />
     </div>
   );

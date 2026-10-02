@@ -22,7 +22,7 @@ test.describe('Yatırım Planlama (Investment Planner)', () => {
 
   test('belirli bir hesap seçilip yeni yatırım hedefi eklenebilir', async ({ page }) => {
     // Select 'Ana Hesap'
-    const anaHesapBtn = page.getByRole('button', { name: /Ana Hesap/i });
+    const anaHesapBtn = page.getByRole('button', { name: 'Ana Hesap', exact: true });
     await expect(anaHesapBtn).toBeVisible();
     await anaHesapBtn.click();
 

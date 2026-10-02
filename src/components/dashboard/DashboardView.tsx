@@ -5,8 +5,9 @@ import { RatesTicker } from './RatesTicker';
 import { PortfolioAllocationChart } from './PortfolioAllocationChart';
 import { GroupFilterBar } from '../common/GroupFilterBar';
 import { AddAccountModal } from '../common/AddAccountModal';
+import { EditAccountModal } from '../common/EditAccountModal';
 import { calculatePortfolioSummary, formatTRY, formatNumber } from '../../services/portfolioService';
-import { ArrowRight, Coins, Euro, LineChart, Users, Plus, Wallet } from 'lucide-react';
+import { ArrowRight, Coins, Euro, LineChart, Users, Plus, Wallet, Palette } from 'lucide-react';
 import type { Account, AssetTransaction, MarketRate, CashFlowEntry, Group } from '../../types/finance';
 
 interface DashboardViewProps {
@@ -37,6 +38,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const currentMonth = new Date().getMonth() + 1; // 1-12
   const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
 
   // 1. Calculate Portfolio metrics based on selected group
   const portfolioSummary = calculatePortfolioSummary(
@@ -63,9 +65,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }
   const monthRemaining = monthIncome - monthExpense;
 
+  const currentGroup = selectedGroupId === 'ALL' ? undefined : groups.find(g => g.id === selectedGroupId);
   const currentGroupName = selectedGroupId === 'ALL' 
     ? 'Tüm Portföy (Konsolide)' 
-    : groups.find(g => g.id === selectedGroupId)?.name || 'Hesap';
+    : currentGroup?.name || 'Hesap';
 
   return (
     <div className="space-y-5">
@@ -108,13 +111,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Main Net Worth Hero Card */}
       <div className="space-y-1">
-        {selectedGroupId !== 'ALL' && (
-          <div className="flex items-center gap-1.5 px-2 text-xs font-semibold text-amber-400">
-            <Users className="w-3.5 h-3.5" />
-            <span>{currentGroupName} Varlıkları Görüntüleniyor</span>
+        {selectedGroupId !== 'ALL' && currentGroup && (
+          <div 
+            className="flex items-center justify-between px-3 py-2 rounded-2xl border transition-all"
+            style={{
+              backgroundColor: `${currentGroup.color}15`,
+              borderColor: `${currentGroup.color}35`,
+            }}
+          >
+            <div className="flex items-center gap-2 text-xs font-bold" style={{ color: currentGroup.color }}>
+              <div 
+                className="w-2.5 h-2.5 rounded-full shrink-0" 
+                style={{ backgroundColor: currentGroup.color, boxShadow: `0 0 8px ${currentGroup.color}` }} 
+              />
+              <Users className="w-3.5 h-3.5" />
+              <span>{currentGroupName} Varlıkları Görüntüleniyor</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditingGroup(currentGroup)}
+              title={`${currentGroup.name} Renk Temasını Değiştir`}
+              aria-label={`${currentGroup.name} renk temasını değiştir`}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border transition-all text-[11px] font-medium shadow-sm active:scale-95 cursor-pointer"
+              style={{
+                borderColor: `${currentGroup.color}40`,
+                color: currentGroup.color
+              }}
+            >
+              <Palette className="w-3 h-3" />
+              <span>Renk Temasını Değiştir</span>
+            </button>
           </div>
         )}
-        <NetWorthCard summary={portfolioSummary} hideValues={hideValues} />
+        <NetWorthCard 
+          summary={portfolioSummary} 
+          hideValues={hideValues} 
+          themeColor={currentGroup?.color}
+          accountName={currentGroup?.name}
+        />
       </div>
 
       {/* Real Return Multi-Currency Chips */}
@@ -140,11 +174,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   className="p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-white/5 hover:border-white/15 cursor-pointer transition-all space-y-1.5"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: gb.group.color }} />
+                    <div className="flex items-center gap-1.5 truncate pr-1">
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: gb.group.color }} />
                       <span className="text-xs font-bold text-white truncate">{gb.group.name}</span>
                     </div>
-                    <span className="text-[10px] text-slate-500">{gb.positionsCount} varlık</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingGroup(gb.group);
+                        }}
+                        title={`${gb.group.name} Renk Temasını Değiştir`}
+                        aria-label={`${gb.group.name} renk temasını değiştir`}
+                        className="p-1 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-white/10 transition-colors cursor-pointer"
+                      >
+                        <Palette className="w-3 h-3" />
+                      </button>
+                      <span className="text-[10px] text-slate-500">{gb.positionsCount} varlık</span>
+                    </div>
                   </div>
 
                   <div className="text-sm font-extrabold text-white font-mono">
@@ -170,7 +218,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 {MONTH_NAMES[currentMonth - 1]} {currentYear} Bütçe Durumu
               </h3>
-              <span className="text-sm font-bold text-white mt-0.5 block">{currentGroupName} Nakit Akışı</span>
+              <span className="text-sm font-bold text-white mt-0.5 flex items-center gap-2">
+                {currentGroup && (
+                  <span
+                    className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
+                    style={{ backgroundColor: currentGroup.color, boxShadow: `0 0 6px ${currentGroup.color}` }}
+                  />
+                )}
+                <span>{currentGroupName} Nakit Akışı</span>
+              </span>
             </div>
 
             <button
@@ -296,6 +352,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         isOpen={isAddAccountModalOpen}
         onClose={() => setIsAddAccountModalOpen(false)}
         onAccountCreated={(newId) => setSelectedGroupId(newId)}
+      />
+
+      {/* Edit Account / Theme Color Modal */}
+      <EditAccountModal
+        isOpen={!!editingGroup}
+        onClose={() => setEditingGroup(null)}
+        group={editingGroup}
       />
     </div>
   );

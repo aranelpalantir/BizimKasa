@@ -16,6 +16,12 @@ test.describe('Gelir & Gider (Bütçe & Nakit Akışı)', () => {
 
     // Verify presence of table headers
     await expect(page.locator('table th', { hasText: 'Kalem / Hesap' })).toBeVisible();
+
+    // Varsayılan olarak "Yakın Dönem" filtresi seçilidir
+    await expect(page.getByRole('button', { name: /Yakın Dönem/ })).toHaveClass(/text-amber-300/);
+
+    // Tüm Yıl butonuna tıklandığında tüm 12 ayın başlıkları görünür
+    await page.getByRole('button', { name: 'Tüm Yıl (12 Ay)' }).click();
     await expect(page.locator('table th', { hasText: 'Ocak' })).toBeVisible();
     await expect(page.locator('table th', { hasText: 'Aralık' })).toBeVisible();
   });
@@ -89,5 +95,19 @@ test.describe('Gelir & Gider (Bütçe & Nakit Akışı)', () => {
     // Switch back to 2026
     await yearSelect.selectOption('2026');
     await expect(page.locator('table th', { hasText: 'Kalem / Hesap (2026)' })).toBeVisible();
+  });
+
+  test('yeni bütçe kalemi eklerken enter tuşuna basılarak kaydedilebilir', async ({ page }) => {
+    await page.getByRole('button', { name: 'Kalem Ekle' }).click();
+
+    const modal = page.locator('div[role="dialog"]');
+    await expect(modal).toBeVisible();
+
+    const input = modal.locator('input[type="text"]');
+    await input.fill('Kütüphane Aboneliği');
+    await input.press('Enter');
+
+    await expect(modal).not.toBeVisible();
+    await expect(page.getByText('Kütüphane Aboneliği')).toBeVisible();
   });
 });

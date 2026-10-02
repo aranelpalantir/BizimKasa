@@ -39,6 +39,7 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
   const [historyPage, setHistoryPage] = useState<number>(1);
   const itemsPerPage = 10;
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
 
   // Form State
   const [targetGroupId, setTargetGroupId] = useState<string>(groups[0]?.id || '');
@@ -312,6 +313,42 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
     setEditingTx(null);
   };
 
+  const handleToggleSelectTx = (id: string) => {
+    setSelectedTxIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const isAllSelected = filteredTxs.length > 0 && filteredTxs.every(t => selectedTxIds.has(t.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedTxIds(new Set());
+    } else {
+      setSelectedTxIds(new Set(filteredTxs.map(t => t.id)));
+    }
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedTxIds.size === 0) return;
+    const count = selectedTxIds.size;
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Seçilen İşlemleri Sil',
+      message: `${count} adet ${selectedCurrency === 'EUR' ? 'Euro' : 'Dolar'} hareket kaydını kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`,
+      onConfirm: async () => {
+        await db.transactions.bulkDelete(Array.from(selectedTxIds));
+        setSelectedTxIds(new Set());
+      }
+    });
+  };
+
   const handleDeleteTx = (id: string) => {
     setConfirmDialog({
       isOpen: true,
@@ -319,6 +356,11 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
       message: 'Bu döviz alım/satım kaydını silmek istediğinize emin misiniz?',
       onConfirm: async () => {
         await db.transactions.delete(id);
+        setSelectedTxIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     });
   };
@@ -329,7 +371,10 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5">
         <div className="flex p-1 rounded-xl bg-slate-800 border border-white/5">
           <button
-            onClick={() => setSelectedCurrency('EUR')}
+            onClick={() => {
+              setSelectedCurrency('EUR');
+              setSelectedTxIds(new Set());
+            }}
             className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
               selectedCurrency === 'EUR' ? 'bg-indigo-500 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
@@ -338,7 +383,10 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
             <span>Euro (EUR)</span>
           </button>
           <button
-            onClick={() => setSelectedCurrency('USD')}
+            onClick={() => {
+              setSelectedCurrency('USD');
+              setSelectedTxIds(new Set());
+            }}
             className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
               selectedCurrency === 'USD' ? 'bg-blue-500 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
@@ -361,17 +409,30 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
       <GroupFilterBar
         groups={groupsWithCurrency.length > 0 ? groupsWithCurrency : groups}
         selectedGroupId={selectedGroupId}
-        onSelectGroup={setSelectedGroupId}
+        onSelectGroup={(g) => {
+          setSelectedGroupId(g);
+          setSelectedTxIds(new Set());
+        }}
         title="Hesap"
       />
 
       {/* METRIC HEADER */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-slate-900/90 border border-white/10 shadow-lg">
-        <div className="flex flex-col">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase">
-            {selectedCurrency} Toplam Değer (TL)
-          </span>
-          <span className="text-xl sm:text-2xl font-extrabold text-white mt-1 font-mono">
+      {(() => {
+        const activeGroup = selectedGroupId !== 'ALL' ? groups.find(g => g.id === selectedGroupId) : undefined;
+        return (
+          <div 
+            className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-slate-900/90 border border-white/10 shadow-lg transition-all"
+            style={{
+              borderTop: activeGroup ? `3px solid ${activeGroup.color}` : undefined,
+              boxShadow: activeGroup ? `0 10px 25px -8px ${activeGroup.color}25` : undefined
+            }}
+          >
+            <div className="flex flex-col">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase flex items-center gap-1.5">
+                {activeGroup && <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: activeGroup.color }} />}
+                <span>{selectedCurrency} Toplam Değer (TL)</span>
+              </span>
+              <span className="text-xl sm:text-2xl font-extrabold text-white mt-1 font-mono">
             {formatTRY(currentTRYValue, hideValues)}
           </span>
           <span className="text-xs text-slate-500 mt-0.5">
@@ -403,8 +464,10 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
           <span className="text-xs text-slate-500 mt-0.5">
             {profitLossTRY >= 0 ? '+' : ''}%{formatNumber(profitLossPct, 2)} Getiri
           </span>
-        </div>
-      </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* DYNAMIC MULTI-YEAR MONTHLY MATRIX TABLE */}
       <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl">
@@ -595,11 +658,25 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
       {/* RECENT MOVEMENTS WITH DATE FILTER & PAGINATION */}
       <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-            <History className="w-3.5 h-3.5 text-indigo-400" />
-            <span>{selectedCurrency} Hareket Geçmişi</span>
-            <span className="text-[10px] text-slate-400 font-normal">({filteredTxs.length} İşlem)</span>
-          </h4>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              ref={(el) => {
+                if (el) {
+                  el.indeterminate = selectedTxIds.size > 0 && !isAllSelected;
+                }
+              }}
+              onChange={handleToggleSelectAll}
+              className="w-4 h-4 rounded border-white/20 bg-slate-950 text-indigo-500 focus:ring-0 cursor-pointer accent-indigo-500"
+              title={isAllSelected ? 'Tüm seçimleri kaldır' : 'Tüm filtrelenmiş işlemleri seç'}
+            />
+            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{selectedCurrency} Hareket Geçmişi</span>
+              <span className="text-[10px] text-slate-400 font-normal">({filteredTxs.length} İşlem)</span>
+            </h4>
+          </div>
 
           {/* Quick Filter Chips */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
@@ -627,6 +704,42 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Batch Selection Action Bar */}
+        {selectedTxIds.size > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 px-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-indigo-300">
+                {selectedTxIds.size} işlem seçildi
+              </span>
+              <button
+                type="button"
+                onClick={handleToggleSelectAll}
+                className="text-[11px] text-slate-400 hover:text-white underline ml-1"
+              >
+                {isAllSelected ? 'Seçimi Kaldır' : `Tümünü Seç (${filteredTxs.length})`}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedTxIds(new Set())}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition-colors"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={handleBatchDelete}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-[11px] transition-colors shadow-sm active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Seçilenleri Sil ({selectedTxIds.size})</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Extended Filter Bar: Year & Custom Date Range */}
         <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5 text-xs">
@@ -697,13 +810,25 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
             {paginatedTxs.map((tx) => {
               const acc = accounts.find(a => a.id === tx.accountId);
               const grp = groups.find(g => g.id === acc?.groupId || g.id === tx.groupId);
+              const isSelected = selectedTxIds.has(tx.id);
 
               return (
                 <div
                   key={tx.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/50 border border-white/5 text-xs"
+                  className={`flex items-center justify-between p-2.5 rounded-xl border text-xs transition-colors ${
+                    isSelected
+                      ? 'bg-indigo-500/10 border-indigo-500/40 shadow-sm'
+                      : 'bg-slate-950/50 border-white/5 hover:border-white/10'
+                  }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleSelectTx(tx.id)}
+                      className="w-4 h-4 rounded border-white/20 bg-slate-950 text-indigo-500 focus:ring-0 cursor-pointer accent-indigo-500 flex-shrink-0"
+                      title="İşlemi seç"
+                    />
                     <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
                       tx.type === 'BUY' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
                     }`}>

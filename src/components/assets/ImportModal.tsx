@@ -52,6 +52,7 @@ const PREDEFINED_ASSETS: PredefinedAsset[] = [
 
 interface ParsedImportRow {
   id: string;
+  accountId?: string;
   assetName: string;
   subType: AssetSubType;
   symbol: string;
@@ -95,12 +96,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   // Sync state when modal opens
   useEffect(() => {
     if (isOpen) {
+      if (groups.length > 0 && (!selectedGroupId || !groups.some(g => g.id === selectedGroupId))) {
+        setSelectedGroupId(groups[0].id);
+      }
       setSelectedAssetKey(getInitialAssetKey());
       setPasteText('');
       setParsedRows([]);
       setImportStatus(null);
     }
-  }, [isOpen, defaultCategory]);
+  }, [isOpen, defaultCategory, groups]);
 
   const selectedGroup = groups.find(g => g.id === selectedGroupId) || groups[0];
 
@@ -115,7 +119,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     unit: string; 
     isPhysical: boolean; 
     samplePrice: number; 
-    sampleQty: number 
+    sampleQty: number;
+    accountId?: string;
   } => {
     // 1. Hesabın mevcut varlıklarından seçilmişse
     if (selectedAssetKey.startsWith('ACCOUNT_')) {
@@ -131,8 +136,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
       let unitStr = 'adet';
       if (acc?.subType === 'GOLD_GRAM_PHYSICAL' || acc?.subType === 'GOLD_GRAM_BANK') unitStr = 'gr';
-      else if (acc?.currency === 'USD') unitStr = '$';
-      else if (acc?.currency === 'EUR') unitStr = '€';
+      else if (acc?.currency === 'USD' || acc?.symbol === 'USD') unitStr = '$';
+      else if (acc?.currency === 'EUR' || acc?.symbol === 'EUR') unitStr = '€';
       else if (acc?.subType === 'FUND') unitStr = 'pay';
 
       return {
@@ -142,7 +147,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         unit: unitStr,
         isPhysical: isPhys,
         samplePrice: 100,
-        sampleQty: isPhys ? 2 : 10
+        sampleQty: isPhys ? 2 : 10,
+        accountId: acc?.id
       };
     }
 
@@ -281,10 +287,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   // Legacy 5-column fallback matcher
   const matchAssetFromType = (rawType: string): { name: string; subType: AssetSubType; symbol: string; unit: string; isPhysical: boolean } => {
     const t = rawType.toLowerCase();
-    if (t.includes('fiziki gram') || t.includes('fiziki alt')) {
+    if (t.includes('fiziki') || t.includes('has alt')) {
       return { name: 'Fiziki Gram Altın', subType: 'GOLD_GRAM_PHYSICAL', symbol: 'XAU_GR_PHYSICAL', unit: 'gr', isPhysical: true };
     }
-    if (t.includes('banka') || t.includes('gram alt')) {
+    if (t.includes('banka') || t.includes('gram')) {
       return { name: 'Banka Gram Altın', subType: 'GOLD_GRAM_BANK', symbol: 'XAU_GR_BANK', unit: 'gr', isPhysical: false };
     }
     if (t.includes('çeyrek') || t.includes('ceyrek')) {
@@ -299,11 +305,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     if (t.includes('tam') || t.includes('ziynet')) {
       return { name: 'Tam Altın', subType: 'GOLD_TAM', symbol: 'XAU_TAM', unit: 'adet', isPhysical: true };
     }
-    if (t.includes('euro') || t === 'eur') {
+    if (t.includes('euro') || t === 'eur' || t.includes('€')) {
       return { name: 'Euro (EUR)', subType: 'CURRENCY', symbol: 'EUR', unit: '€', isPhysical: false };
     }
-    if (t.includes('dolar') || t === 'usd') {
-      return { name: 'Dolar (USD)', subType: 'CURRENCY', symbol: 'USD', unit: '$', isPhysical: false };
+    if (t.includes('dolar') || t === 'usd' || t.includes('$')) {
+      return { name: 'Amerikan Doları (USD)', subType: 'CURRENCY', symbol: 'USD', unit: '$', isPhysical: false };
+    }
+    if (t.includes('altın') || t.includes('altin') || t.includes('xau')) {
+      return { name: 'Fiziki Gram Altın', subType: 'GOLD_GRAM_PHYSICAL', symbol: 'XAU_GR_PHYSICAL', unit: 'gr', isPhysical: true };
     }
     const sym = rawType.toUpperCase().trim();
     return { name: `${sym} Fonu`, subType: 'FUND', symbol: sym, unit: 'pay', isPhysical: false };
@@ -348,7 +357,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         noteCol = cols[4] || '';
         const matched = matchAssetFromType(rawType);
         if (matched) {
-          lineAsset = { ...lineAsset, ...matched };
+          lineAsset = { ...lineAsset, ...matched, accountId: undefined };
         }
       } else {
         // Başlık satırı (örn: "Tarih;Miktar;Fiyat;Açıklama"), atla
@@ -372,6 +381,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
       rows.push({
         id: `row-${i}-${Date.now()}`,
+        accountId: lineAsset.accountId,
         assetName: lineAsset.name,
         subType: lineAsset.subType,
         symbol: lineAsset.symbol,
@@ -463,31 +473,67 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
     try {
       const newTransactions: AssetTransaction[] = [];
+      const currentAccounts: Account[] = [...accounts];
 
       for (const row of parsedRows) {
-        // Target Account lookup or creation
-        let targetAccount = accounts.find(a => 
-          a.groupId === selectedGroupId && 
-          a.subType === row.subType && 
-          (row.subType === 'FUND' ? (a.symbol === row.symbol) : (a.symbol === row.symbol || a.subType === row.subType))
-        );
+        let targetAccount: Account | undefined;
 
+        // 1. Doğrudan seçilmiş mevcut hesap ID'si varsa
+        if (row.accountId) {
+          targetAccount = currentAccounts.find(a => a.id === row.accountId);
+        }
+
+        // 2. Grubun içinde kesin eşleşen varlık hesabı ara (Döviz, Fon, Altın)
+        if (!targetAccount) {
+          targetAccount = currentAccounts.find(a => {
+            if (a.groupId !== selectedGroupId || a.type !== 'ASSET') return false;
+
+            // DÖVİZ KURALI: Dolar ile Euro asla birbirine karışamaz!
+            if (row.subType === 'CURRENCY') {
+              if (a.subType !== 'CURRENCY') return false;
+              if (a.symbol === row.symbol || a.currency === row.symbol) return true;
+              // İsme göre toleranslı arama (ama diğer döviz türünü içermemeli)
+              if (row.symbol === 'USD' && a.name.toLowerCase().includes('dolar') && !a.name.toLowerCase().includes('euro')) return true;
+              if (row.symbol === 'EUR' && a.name.toLowerCase().includes('euro') && !a.name.toLowerCase().includes('dolar')) return true;
+              return false;
+            }
+
+            // FON / BORSA KURALI: Fon kodu tam eşleşmeli (örn: TI2, MAC, AFT)
+            if (row.subType === 'FUND' || row.subType === 'STOCK') {
+              return (a.subType === 'FUND' || a.subType === 'STOCK') && 
+                     a.symbol?.toUpperCase() === row.symbol?.toUpperCase();
+            }
+
+            // ALTIN KURALI: Altın alt türü (Fiziki Gram, Banka Gram, Çeyrek vb.) eşleşmeli
+            if (row.subType.startsWith('GOLD_')) {
+              if (a.subType !== row.subType) return false;
+              if (a.symbol && row.symbol && a.symbol !== row.symbol) return false;
+              return true;
+            }
+
+            // Diğer varlıklar
+            return a.subType === row.subType && (!row.symbol || a.symbol === row.symbol);
+          });
+        }
+
+        // 3. Hesap bulunamadıysa yeni hesap oluştur ve bellek içi listeye ekle
         if (!targetAccount) {
           const newAcc: Account = {
-            id: `acc-import-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+            id: `acc-import-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
             groupId: selectedGroupId,
             name: `${selectedGroup.name} ${row.assetName}`.trim(),
             type: 'ASSET',
             subType: row.subType,
             symbol: row.symbol,
-            currency: (row.symbol === 'EUR' || row.symbol === 'USD') ? row.symbol : 'TRY',
-            order: accounts.length + 1,
+            currency: (row.symbol === 'EUR' || row.symbol === 'USD') ? (row.symbol as 'EUR' | 'USD') : 'TRY',
+            order: currentAccounts.length + 1,
             createdAt: new Date().toISOString()
           };
           await db.accounts.add(newAcc);
+          currentAccounts.push(newAcc); // Sonraki satırlar bu hesabı tekrar kullanır
           targetAccount = newAcc;
 
-          // If new TEFAS fund, ensure marketRate entry exists
+          // Yeni TEFAS fonu ise marketRate kaydı ekle
           if (row.subType === 'FUND') {
             const existingRate = await db.marketRates.get(row.symbol);
             if (!existingRate) {
@@ -507,7 +553,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         }
 
         newTransactions.push({
-          id: `tx-imp-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          id: `tx-imp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
           accountId: targetAccount.id,
           groupId: selectedGroupId,
           date: row.date,
@@ -526,7 +572,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       await syncTefasFundRatesWithAssets();
       setImportStatus({
         success: true,
-        message: `${parsedRows.length} adet işlem "${selectedGroup.name}" (${resolvedAsset.name}) hesabına başarıyla aktarıldı!`
+        message: `${parsedRows.length} adet işlem "${selectedGroup.name}" hesabına başarıyla aktarıldı!`
       });
 
       setTimeout(() => {
@@ -566,7 +612,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               </label>
               <select
                 value={selectedGroupId}
-                onChange={(e) => setSelectedGroupId(e.target.value)}
+                onChange={(e) => {
+                  const newGid = e.target.value;
+                  setSelectedGroupId(newGid);
+                  if (selectedAssetKey.startsWith('ACCOUNT_')) {
+                    setSelectedAssetKey(getInitialAssetKey());
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-medium text-xs focus:outline-none focus:border-amber-400 cursor-pointer"
               >
                 {groups.map((g) => (
@@ -765,6 +817,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono">
                   {selectedGroup.name} • {resolvedAsset.name}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setParsedRows([]);
+                    setPasteText('');
+                  }}
+                  className="text-[10px] text-rose-400 hover:text-rose-300 hover:underline font-normal ml-1"
+                >
+                  Listeyi Temizle
+                </button>
               </span>
 
               <div className="flex items-center gap-2 font-mono text-[11px]">

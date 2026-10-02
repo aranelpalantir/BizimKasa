@@ -1,25 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { db } from '../../db/db';
 import { Palette, Check, Sparkles, Layers } from 'lucide-react';
 import { ACCOUNT_THEME_COLORS, getThemeColorName } from '../../constants/themeColors';
 import type { Group } from '../../types/finance';
 
-interface AddAccountModalProps {
+interface EditAccountModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAccountCreated?: (newGroupId: string) => void;
+  group: Group | null;
+  onAccountUpdated?: (updatedGroup: Group) => void;
 }
 
-export const AddAccountModal: React.FC<AddAccountModalProps> = ({
+export const EditAccountModal: React.FC<EditAccountModalProps> = ({
   isOpen,
   onClose,
-  onAccountCreated
+  group,
+  onAccountUpdated
 }) => {
   const [accountName, setAccountName] = useState('');
   const [accountColor, setAccountColor] = useState('#3b82f6');
   const [customHexInput, setCustomHexInput] = useState('#3b82f6');
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (group && isOpen) {
+      setAccountName(group.name);
+      setAccountColor(group.color);
+      setCustomHexInput(group.color);
+      setError(null);
+    }
+  }, [group, isOpen]);
 
   const handleSelectColor = (hex: string) => {
     setAccountColor(hex);
@@ -36,34 +48,40 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!group) return;
+
     const trimmed = accountName.trim();
     if (!trimmed) {
       setError('Lütfen bir hesap adı girin.');
       return;
     }
 
+    setIsSaving(true);
     try {
-      const count = await db.groups.count();
-      const newGroup: Group = {
-        id: `group-${Date.now()}`,
+      await db.groups.update(group.id, {
         name: trimmed,
-        color: accountColor,
-        order: count + 1,
-        createdAt: new Date().toISOString()
+        color: accountColor
+      });
+
+      const updated: Group = {
+        ...group,
+        name: trimmed,
+        color: accountColor
       };
-      await db.groups.add(newGroup);
-      setAccountName('');
-      setAccountColor('#3b82f6');
-      setCustomHexInput('#3b82f6');
+
       setError(null);
-      onClose();
-      if (onAccountCreated) {
-        onAccountCreated(newGroup.id);
+      if (onAccountUpdated) {
+        onAccountUpdated(updated);
       }
+      onClose();
     } catch (err: any) {
-      setError(`Hesap oluşturulamadı: ${err?.message || 'Bilinmeyen hata'}`);
+      setError(`Hesap güncellenemedi: ${err?.message || 'Bilinmeyen hata'}`);
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  if (!group) return null;
 
   return (
     <Modal
@@ -72,33 +90,34 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
         setError(null);
         onClose();
       }}
-      title="Yeni Hesap / Kasa Ekle"
+      title="Hesap Renk Temasını Değiştir"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Account Name */}
         <div>
           <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-            Hesap Adı
+            Hesap / Kasa Adı
           </label>
           <input
             type="text"
-            autoFocus
             value={accountName}
             onChange={(e) => {
               setAccountName(e.target.value);
               setError(null);
             }}
-            placeholder="Örn: Ana Hesap, Yatırım Hesabı, Tasarruf Fonu, Ortak Kasa..."
-            className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none focus:border-amber-400"
+            placeholder="Örn: Ana Hesap, Yatırım Portföyü, Tasarruf Fonu..."
+            className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none focus:border-amber-400 transition-colors"
           />
           {error && (
             <p className="text-xs text-rose-400 mt-1">{error}</p>
           )}
         </div>
 
+        {/* Color Palette Grid */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-xs font-semibold text-slate-300">
-              Renk Teması
+              Renk Teması Seçimi
             </label>
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
               <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: accountColor }} />
@@ -171,7 +190,8 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
             <span>Canlı Önizleme</span>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-white/10 space-y-2.5">
+          <div className="p-4 rounded-2xl bg-slate-950/60 border border-white/10 space-y-3">
+            {/* 1. Filter pill preview */}
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-400 text-[11px]">Filtre Düğmesi:</span>
               <div
@@ -186,10 +206,11 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
                   className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                   style={{ backgroundColor: accountColor }}
                 />
-                <span>{accountName || 'Yeni Hesap'}</span>
+                <span>{accountName || 'Hesap Adı'}</span>
               </div>
             </div>
 
+            {/* 2. Asset badge preview */}
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-400 text-[11px]">Varlık Rozeti:</span>
               <div
@@ -200,25 +221,28 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 }}
               >
                 <Layers className="w-3 h-3" />
-                <span>{accountName || 'Yeni Hesap'}</span>
+                <span>{accountName || 'Hesap Adı'}</span>
               </div>
             </div>
           </div>
         </div>
 
+        {/* Action Buttons */}
         <div className="flex justify-end gap-2 pt-2 border-t border-white/5">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700 transition-colors"
+            className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700 transition-colors cursor-pointer"
           >
             Vazgeç
           </button>
           <button
             type="submit"
-            className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-md shadow-amber-500/20"
+            disabled={isSaving}
+            className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            Hesabı Oluştur
+            <Check className="w-4 h-4 stroke-[2.5]" />
+            <span>{isSaving ? 'Kaydediliyor...' : 'Temayı Kaydet'}</span>
           </button>
         </div>
       </form>

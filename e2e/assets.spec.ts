@@ -133,4 +133,98 @@ test.describe('Varlıklar (Altın, Döviz ve Fon Takibi)', () => {
     // Verify transaction appears in table
     await expect(page.getByText('E2E Test Fon Alımı').first()).toBeVisible();
   });
+
+  test('dolar ve euro içeri aktarıldığında hesaplar birbirine karışmaz', async ({ page }) => {
+    // 1. Dolar İçe Aktar
+    await page.getByRole('button', { name: 'Excel / CSV İçe Aktar' }).click();
+    let importModal = page.locator('div[role="dialog"]');
+    await expect(importModal).toBeVisible();
+
+    // Select Dolar asset
+    const assetSelect = importModal.locator('select').nth(1);
+    await assetSelect.selectOption('CURRENCY_USD');
+
+    // Fill paste text
+    const textarea = importModal.locator('textarea');
+    await textarea.fill('15.01.2025; 200; 49.00; Ozel Dolar Ice Aktarimi');
+
+    // Submit import
+    const submitBtn = importModal.getByRole('button', { name: /İçin Aktar/ });
+    await submitBtn.click();
+    await expect(importModal).not.toBeVisible({ timeout: 5000 });
+
+    // 2. Euro İçe Aktar
+    await page.getByRole('button', { name: 'Excel / CSV İçe Aktar' }).click();
+    importModal = page.locator('div[role="dialog"]');
+    await expect(importModal).toBeVisible();
+
+    const assetSelectEur = importModal.locator('select').nth(1);
+    await assetSelectEur.selectOption('CURRENCY_EUR');
+
+    const textareaEur = importModal.locator('textarea');
+    await textareaEur.fill('16.01.2025; 300; 55.00; Ozel Euro Ice Aktarimi');
+
+    const submitBtnEur = importModal.getByRole('button', { name: /İçin Aktar/ });
+    await submitBtnEur.click();
+    await expect(importModal).not.toBeVisible({ timeout: 5000 });
+
+    // 3. Döviz sekmesine git ve Dolar / Euro ayrımını doğrula
+    await page.getByRole('button', { name: 'Döviz (EUR & USD)', exact: true }).click();
+
+    // Dolar kontrolü
+    await page.getByRole('button', { name: 'Dolar (USD)' }).click();
+    await expect(page.getByText('Ozel Dolar Ice Aktarimi').first()).toBeVisible();
+    await expect(page.getByText('Ozel Euro Ice Aktarimi')).toHaveCount(0);
+
+    // Euro kontrolü
+    await page.getByRole('button', { name: 'Euro (EUR)' }).click();
+    await expect(page.getByText('Ozel Euro Ice Aktarimi').first()).toBeVisible();
+    await expect(page.getByText('Ozel Dolar Ice Aktarimi')).toHaveCount(0);
+  });
+
+  test('hareketler çoklu seçilip toplu olarak silinebilir', async ({ page }) => {
+    // Döviz sekmesine git
+    await page.getByRole('button', { name: 'Döviz (EUR & USD)', exact: true }).click();
+    await page.getByRole('button', { name: 'Dolar (USD)' }).click();
+
+    // İki yeni işlem ekle
+    for (const note of ['Silinecek İslem 1', 'Silinecek İslem 2']) {
+      await page.getByRole('button', { name: 'Döviz Al / Bozdur' }).click();
+      const modal = page.locator('div[role="dialog"]');
+      await expect(modal).toBeVisible();
+
+      await modal.locator('div:has(> label:has-text("Miktar")) > input').fill('50');
+      await modal.locator('div:has(> label:has-text("Kur")) > input').fill('49');
+      await modal.locator('div:has(> label:has-text("Açıklama")) > input').fill(note);
+      await modal.getByRole('button', { name: 'İşlemi Kaydet' }).click();
+      await expect(modal).not.toBeVisible();
+      await expect(page.getByText(note).first()).toBeVisible();
+    }
+
+    // Seçim kutularını işaretle
+    const row1 = page.locator('div:has-text("Silinecek İslem 1")').filter({ has: page.locator('input[type="checkbox"]') }).last();
+    const row2 = page.locator('div:has-text("Silinecek İslem 2")').filter({ has: page.locator('input[type="checkbox"]') }).last();
+
+    await row1.locator('input[type="checkbox"]').check();
+    await row2.locator('input[type="checkbox"]').check();
+
+    // Toplu silme çubuğu ve butonu görünür olmalı
+    await expect(page.getByText(/2 işlem seçildi/)).toBeVisible();
+    const batchDeleteBtn = page.getByRole('button', { name: /Seçilenleri Sil \(2\)/ });
+    await expect(batchDeleteBtn).toBeVisible();
+
+    // Toplu silmeye tıkla
+    await batchDeleteBtn.click();
+
+    // Onay modalı
+    const confirmModal = page.locator('div[role="dialog"]:has-text("Seçilen İşlemleri Sil")');
+    await expect(confirmModal).toBeVisible();
+    await confirmModal.getByRole('button', { name: 'Sil' }).click();
+
+    // Onay modalı kapanır ve işlemler silinir
+    await expect(confirmModal).not.toBeVisible();
+    await expect(page.getByText('Silinecek İslem 1')).toHaveCount(0);
+    await expect(page.getByText('Silinecek İslem 2')).toHaveCount(0);
+  });
 });
+

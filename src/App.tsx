@@ -251,6 +251,7 @@ export const App: React.FC = () => {
         {activeTab === 'settings' && (
           <SettingsView
             settings={settings}
+            groups={groups}
             onRefreshSettings={async () => {
               const s = await getSettings();
               setSettings(s);

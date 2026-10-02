@@ -49,6 +49,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
   const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
 
   // Form State
   const [txType, setTxType] = useState<'BUY' | 'SELL'>('BUY');
@@ -457,6 +458,43 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     });
   };
 
+  const handleToggleSelectTx = (id: string) => {
+    setSelectedTxIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const isAllSelected = filteredTxs.length > 0 && filteredTxs.every(t => selectedTxIds.has(t.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedTxIds(new Set());
+    } else {
+      setSelectedTxIds(new Set(filteredTxs.map(t => t.id)));
+    }
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedTxIds.size === 0) return;
+    const count = selectedTxIds.size;
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Seçilen İşlemleri Sil',
+      message: `${count} adet fon hareket kaydını kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`,
+      onConfirm: async () => {
+        await db.transactions.bulkDelete(Array.from(selectedTxIds));
+        await syncTefasFundRatesWithAssets();
+        setSelectedTxIds(new Set());
+      }
+    });
+  };
+
   const handleDeleteTx = (id: string) => {
     setConfirmDialog({
       isOpen: true,
@@ -465,6 +503,11 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       onConfirm: async () => {
         await db.transactions.delete(id);
         await syncTefasFundRatesWithAssets();
+        setSelectedTxIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     });
   };
@@ -503,45 +546,62 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       <GroupFilterBar
         groups={groupsWithFunds.length > 0 ? groupsWithFunds : groups}
         selectedGroupId={selectedGroupId}
-        onSelectGroup={setSelectedGroupId}
+        onSelectGroup={(g) => {
+          setSelectedGroupId(g);
+          setSelectedTxIds(new Set());
+        }}
         title="Hesap"
       />
 
       {/* SUMMARY TOTALS */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 rounded-2xl bg-slate-900/90 border border-white/10 shadow-lg">
-        <div className="flex flex-col">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase">Toplam Fon Değeri</span>
-          <span className="text-lg sm:text-xl font-extrabold text-white mt-1 font-mono">
-            {formatTRY(totalFundsValue, hideValues)}
-          </span>
-          <span className="text-[10px] text-slate-500">Güncel Piyasa</span>
-        </div>
+      {(() => {
+        const activeGroup = selectedGroupId !== 'ALL' ? groups.find(g => g.id === selectedGroupId) : undefined;
+        return (
+          <div 
+            className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 rounded-2xl bg-slate-900/90 border border-white/10 shadow-lg transition-all"
+            style={{
+              borderTop: activeGroup ? `3px solid ${activeGroup.color}` : undefined,
+              boxShadow: activeGroup ? `0 10px 25px -8px ${activeGroup.color}25` : undefined
+            }}
+          >
+            <div className="flex flex-col">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase flex items-center gap-1.5">
+                {activeGroup && <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: activeGroup.color }} />}
+                <span>Toplam Fon Değeri</span>
+              </span>
+              <span className="text-lg sm:text-xl font-extrabold text-white mt-1 font-mono">
+                {formatTRY(totalFundsValue, hideValues)}
+              </span>
+              <span className="text-[10px] text-slate-500">Güncel Piyasa</span>
+            </div>
 
-        <div className="flex flex-col border-l border-white/10 pl-2.5">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase">Toplam Maliyet</span>
-          <span className="text-lg sm:text-xl font-extrabold text-slate-300 mt-1 font-mono">
-            {formatTRY(totalFundsCost, hideValues)}
-          </span>
-          <span className="text-[10px] text-slate-500">Ödenen Anapara</span>
-        </div>
+            <div className="flex flex-col border-l border-white/10 pl-2.5">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase">Toplam Maliyet</span>
+              <span className="text-lg sm:text-xl font-extrabold text-slate-300 mt-1 font-mono">
+                {formatTRY(totalFundsCost, hideValues)}
+              </span>
+              <span className="text-[10px] text-slate-500">Ödenen Anapara</span>
+            </div>
 
-        <div className="flex flex-col border-t sm:border-t-0 sm:border-l border-white/10 pt-2 sm:pt-0 sm:pl-2.5">
-          <span className="text-[11px] font-semibold text-emerald-400 uppercase">Net Kâr / Zarar</span>
-          <span className={`text-lg sm:text-xl font-extrabold mt-1 font-mono ${totalFundsProfitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {totalFundsProfitLoss >= 0 ? '+' : ''}{formatTRY(totalFundsProfitLoss, hideValues)}
-          </span>
-          <span className="text-[10px] text-slate-500">Net Kazanç</span>
-        </div>
+            <div className="flex flex-col border-t sm:border-t-0 sm:border-l border-white/10 pt-2 sm:pt-0 sm:pl-2.5">
+              <span className="text-[11px] font-semibold text-emerald-400 uppercase">Net Kâr / Zarar</span>
+              <span className={`text-lg sm:text-xl font-extrabold mt-1 font-mono ${totalFundsProfitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {totalFundsProfitLoss >= 0 ? '+' : ''}{formatTRY(totalFundsProfitLoss, hideValues)}
+              </span>
+              <span className="text-[10px] text-slate-500">Net Kazanç</span>
+            </div>
 
-        <div className="flex flex-col border-t sm:border-t-0 sm:border-l border-white/10 pt-2 sm:pt-0 sm:pl-2.5">
-          <span className="text-[11px] font-semibold text-emerald-400 uppercase">Kâr Oranı</span>
-          <div className={`flex items-center gap-1 text-lg sm:text-xl font-extrabold mt-1 font-mono ${totalFundsProfitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {totalFundsProfitLoss >= 0 ? <ArrowUpRight className="w-5 h-5" /> : <ArrowDownRight className="w-5 h-5" />}
-            <span>%{formatNumber(totalFundsProfitPct, 2)}</span>
+            <div className="flex flex-col border-t sm:border-t-0 sm:border-l border-white/10 pt-2 sm:pt-0 sm:pl-2.5">
+              <span className="text-[11px] font-semibold text-emerald-400 uppercase">Kâr Oranı</span>
+              <div className={`flex items-center gap-1 text-lg sm:text-xl font-extrabold mt-1 font-mono ${totalFundsProfitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {totalFundsProfitLoss >= 0 ? <ArrowUpRight className="w-5 h-5" /> : <ArrowDownRight className="w-5 h-5" />}
+                <span>%{formatNumber(totalFundsProfitPct, 2)}</span>
+              </div>
+              <span className="text-[10px] text-slate-500">Yüzdesel Getiri</span>
+            </div>
           </div>
-          <span className="text-[10px] text-slate-500">Yüzdesel Getiri</span>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* 4 DISTINCT CHARTS (PORTFÖY ORANI, MALİYET, DEĞER, KÂR/ZARAR) */}
       {fundData.length > 0 && (
@@ -841,10 +901,25 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       {/* TRANSACTION HISTORY WITH DATE FILTERS */}
       <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-            <History className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Fon Alış & Satış Hareket Geçmişi</span>
-          </h4>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              ref={(el) => {
+                if (el) {
+                  el.indeterminate = selectedTxIds.size > 0 && !isAllSelected;
+                }
+              }}
+              onChange={handleToggleSelectAll}
+              className="w-4 h-4 rounded border-white/20 bg-slate-950 text-emerald-500 focus:ring-0 cursor-pointer accent-emerald-500"
+              title={isAllSelected ? 'Tüm seçimleri kaldır' : 'Tüm filtrelenmiş işlemleri seç'}
+            />
+            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Fon Alış & Satış Hareket Geçmişi</span>
+              <span className="text-[10px] text-slate-400 font-normal">({filteredTxs.length} İşlem)</span>
+            </h4>
+          </div>
 
           {/* Date Filter Chips */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
@@ -872,6 +947,42 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
           </div>
         </div>
 
+        {/* Batch Selection Action Bar */}
+        {selectedTxIds.size > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-emerald-300">
+                {selectedTxIds.size} işlem seçildi
+              </span>
+              <button
+                type="button"
+                onClick={handleToggleSelectAll}
+                className="text-[11px] text-slate-400 hover:text-white underline ml-1"
+              >
+                {isAllSelected ? 'Seçimi Kaldır' : `Tümünü Seç (${filteredTxs.length})`}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedTxIds(new Set())}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition-colors"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={handleBatchDelete}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-[11px] transition-colors shadow-sm active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Seçilenleri Sil ({selectedTxIds.size})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {filteredTxs.length === 0 ? (
           <p className="text-xs text-slate-400 py-3 text-center">Bu filtreye uygun işlem kaydı bulunamadı.</p>
         ) : (
@@ -879,13 +990,25 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
             {filteredTxs.map((tx) => {
               const acc = accounts.find(a => a.id === tx.accountId);
               const grp = groups.find(g => g.id === acc?.groupId || g.id === tx.groupId);
+              const isSelected = selectedTxIds.has(tx.id);
 
               return (
                 <div
                   key={tx.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/50 border border-white/5 text-xs"
+                  className={`flex items-center justify-between p-2.5 rounded-xl border text-xs transition-colors ${
+                    isSelected
+                      ? 'bg-emerald-500/10 border-emerald-500/40 shadow-sm'
+                      : 'bg-slate-950/50 border-white/5 hover:border-white/10'
+                  }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleSelectTx(tx.id)}
+                      className="w-4 h-4 rounded border-white/20 bg-slate-950 text-emerald-500 focus:ring-0 cursor-pointer accent-emerald-500 flex-shrink-0"
+                      title="İşlemi seç"
+                    />
                     <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
                       tx.type === 'BUY' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
                     }`}>

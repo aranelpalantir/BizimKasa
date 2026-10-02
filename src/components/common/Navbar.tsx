@@ -1,6 +1,7 @@
 import React from 'react';
 import { Shield, Eye, EyeOff, Lock, RefreshCw, Smartphone } from 'lucide-react';
 import { GithubIcon } from './GithubIcon';
+import { APP_VERSION } from '../../version';
 import type { AppSettings } from '../../types/finance';
 
 interface NavbarProps {
@@ -41,6 +42,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-bold tracking-tight text-lg text-white">Bizim Kasa</span>
+              <span 
+                title={`Sürüm: v${APP_VERSION}`}
+                className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md bg-amber-400/10 text-amber-300 border border-amber-400/20"
+              >
+                v{APP_VERSION}
+              </span>
             </div>
             <p className="text-[11px] text-slate-400 -mt-0.5">Ortak Bütçe & Varlık Portföyü</p>
           </div>

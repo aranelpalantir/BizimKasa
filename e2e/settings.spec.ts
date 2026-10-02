@@ -12,6 +12,8 @@ test.describe('Ayarlar ve Güvenlik (Settings & PIN Security)', () => {
     await expect(page.getByText('Güvenlik & Giriş Kilidi')).toBeVisible();
     await expect(page.getByText('Yedekleme & Geri Yükleme')).toBeVisible();
     await expect(page.getByText('%100 Local-First Gizlilik Güvencesi')).toBeVisible();
+    await expect(page.getByText('v1.1.0').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /Sürümü Yenile/ })).toBeVisible();
   });
 
   test('PIN belirleme, kilitleme, hatalı ve doğru PIN ile kilit açma, ardından PIN kaldırma akışı', async ({ page }) => {
@@ -109,7 +111,7 @@ test.describe('Ayarlar ve Güvenlik (Settings & PIN Security)', () => {
     await exportModal.getByRole('button', { name: 'Şifrele ve İndir' }).click();
     const download = await downloadPromise;
 
-    expect(download.suggestedFilename()).toMatch(/bizimkasa-sifreli-yedek-.*\.enc\.json$/);
+    expect(download.suggestedFilename()).toMatch(/bizimkasa-sifreli-yedek-.*\.json$/);
 
     const downloadPath = await download.path();
     expect(downloadPath).toBeTruthy();
