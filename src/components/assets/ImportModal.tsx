@@ -22,6 +22,8 @@ interface ImportModalProps {
   groups: Group[];
   accounts: Account[];
   defaultCategory?: 'gold' | 'currency' | 'funds';
+  defaultAssetKey?: string;
+  defaultGroupId?: string;
 }
 
 interface PredefinedAsset {
@@ -38,16 +40,16 @@ interface PredefinedAsset {
 
 const PREDEFINED_ASSETS: PredefinedAsset[] = [
   // Altın
-  { key: 'GOLD_GRAM_PHYSICAL', name: 'Fiziki Gram Altın', subType: 'GOLD_GRAM_PHYSICAL', symbol: 'XAU_GR_PHYSICAL', category: 'GOLD', unit: 'gr', isPhysical: true, samplePrice: 6710, sampleQty: 5 },
   { key: 'GOLD_GRAM_BANK', name: 'Banka Gram Altın', subType: 'GOLD_GRAM_BANK', symbol: 'XAU_GR_BANK', category: 'GOLD', unit: 'gr', isPhysical: false, samplePrice: 6560, sampleQty: 4.5 },
+  { key: 'GOLD_GRAM_PHYSICAL', name: 'Fiziki Gram Altın', subType: 'GOLD_GRAM_PHYSICAL', symbol: 'XAU_GR_PHYSICAL', category: 'GOLD', unit: 'gr', isPhysical: true, samplePrice: 6710, sampleQty: 5 },
   { key: 'GOLD_CEYREK', name: 'Çeyrek Altın', subType: 'GOLD_CEYREK', symbol: 'XAU_CEYREK', category: 'GOLD', unit: 'adet', isPhysical: true, samplePrice: 10980, sampleQty: 2 },
   { key: 'GOLD_YARIM', name: 'Yarım Altın', subType: 'GOLD_YARIM', symbol: 'XAU_YARIM', category: 'GOLD', unit: 'adet', isPhysical: true, samplePrice: 21960, sampleQty: 1 },
   { key: 'GOLD_TAM', name: 'Tam Altın', subType: 'GOLD_TAM', symbol: 'XAU_TAM', category: 'GOLD', unit: 'adet', isPhysical: true, samplePrice: 43920, sampleQty: 1 },
   { key: 'GOLD_CUMHURIYET', name: 'Cumhuriyet Altını', subType: 'GOLD_CUMHURIYET', symbol: 'XAU_CUMHURIYET', category: 'GOLD', unit: 'adet', isPhysical: true, samplePrice: 45200, sampleQty: 1 },
 
-  // Döviz (Yalnızca USD ve EUR)
-  { key: 'CURRENCY_USD', name: 'Amerikan Doları (USD)', subType: 'CURRENCY', symbol: 'USD', category: 'CURRENCY', unit: '$', isPhysical: false, samplePrice: 49.00, sampleQty: 1000 },
+  // Döviz (Yalnızca EUR ve USD)
   { key: 'CURRENCY_EUR', name: 'Euro (EUR)', subType: 'CURRENCY', symbol: 'EUR', category: 'CURRENCY', unit: '€', isPhysical: false, samplePrice: 55.20, sampleQty: 500 },
+  { key: 'CURRENCY_USD', name: 'Amerikan Doları (USD)', subType: 'CURRENCY', symbol: 'USD', category: 'CURRENCY', unit: '$', isPhysical: false, samplePrice: 49.00, sampleQty: 1000 },
 ];
 
 interface ParsedImportRow {
@@ -73,16 +75,22 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   onClose,
   groups,
   accounts,
-  defaultCategory = 'gold'
+  defaultCategory = 'gold',
+  defaultAssetKey,
+  defaultGroupId
 }) => {
-  const [selectedGroupId, setSelectedGroupId] = useState<string>(groups[0]?.id || '');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(defaultGroupId || groups[0]?.id || '');
   
   // Initial default asset key
   const getInitialAssetKey = () => {
-    if (defaultCategory === 'gold') return 'GOLD_GRAM_PHYSICAL';
-    if (defaultCategory === 'currency') return 'CURRENCY_USD';
-    if (defaultCategory === 'funds') return 'CUSTOM_FUND';
-    return 'GOLD_GRAM_PHYSICAL';
+    if (defaultAssetKey) return defaultAssetKey;
+    if (defaultCategory === 'gold') return 'GOLD_GRAM_BANK';
+    if (defaultCategory === 'currency') return 'CURRENCY_EUR';
+    if (defaultCategory === 'funds') {
+      const firstFund = accounts.find(a => a.type === 'ASSET' && (a.subType === 'FUND' || a.subType === 'STOCK') && a.symbol);
+      return firstFund?.symbol ? `FUND_${firstFund.symbol.toUpperCase()}` : 'CUSTOM_FUND';
+    }
+    return 'GOLD_GRAM_BANK';
   };
 
   const [selectedAssetKey, setSelectedAssetKey] = useState<string>(getInitialAssetKey);
@@ -93,23 +101,42 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [parsedRows, setParsedRows] = useState<ParsedImportRow[]>([]);
   const [importStatus, setImportStatus] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Unique funds in user's portfolio across all groups
+  const portfolioFunds = Array.from(
+    new Map(
+      accounts
+        .filter(a => a.type === 'ASSET' && (a.subType === 'FUND' || a.subType === 'STOCK') && a.symbol)
+        .map(a => [a.symbol!.toUpperCase(), a])
+    ).values()
+  );
+
   // Sync state when modal opens
   useEffect(() => {
     if (isOpen) {
-      if (groups.length > 0 && (!selectedGroupId || !groups.some(g => g.id === selectedGroupId))) {
+      if (defaultGroupId && groups.some(g => g.id === defaultGroupId)) {
+        setSelectedGroupId(defaultGroupId);
+      } else if (groups.length > 0 && (!selectedGroupId || !groups.some(g => g.id === selectedGroupId))) {
         setSelectedGroupId(groups[0].id);
       }
-      setSelectedAssetKey(getInitialAssetKey());
+      
+      const initKey = defaultAssetKey || getInitialAssetKey();
+      setSelectedAssetKey(initKey);
+
+      if (initKey.startsWith('FUND_')) {
+        const sym = initKey.replace('FUND_', '').toUpperCase();
+        setCustomFundCode(sym);
+      } else if (initKey === 'CUSTOM_FUND') {
+        setCustomFundCode('TI2');
+      }
+
+      setCustomFundSuggestions([]);
       setPasteText('');
       setParsedRows([]);
       setImportStatus(null);
     }
-  }, [isOpen, defaultCategory, groups]);
+  }, [isOpen, defaultCategory, defaultAssetKey, defaultGroupId, groups]);
 
   const selectedGroup = groups.find(g => g.id === selectedGroupId) || groups[0];
-
-  // Accounts belonging to selected group
-  const groupAssetAccounts = accounts.filter(a => a.groupId === selectedGroupId && a.type === 'ASSET');
 
   // Resolve active asset definition
   const getResolvedAsset = (): { 
@@ -119,10 +146,59 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     unit: string; 
     isPhysical: boolean; 
     samplePrice: number; 
-    sampleQty: number;
+    sampleQty: number; 
     accountId?: string;
   } => {
-    // 1. Hesabın mevcut varlıklarından seçilmişse
+    // 1. Portföy fonu seçilmişse (FUND_TI2 vb.)
+    if (selectedAssetKey.startsWith('FUND_')) {
+      const fundSymbol = selectedAssetKey.replace('FUND_', '').toUpperCase();
+      const lookedUp = lookupTefasFund(fundSymbol);
+      const existingAcc = accounts.find(a => 
+        a.type === 'ASSET' && 
+        (a.subType === 'FUND' || a.subType === 'STOCK') && 
+        a.symbol?.toUpperCase() === fundSymbol
+      );
+      return {
+        name: lookedUp ? lookedUp.name : (existingAcc?.name || `${fundSymbol} Fonu`),
+        subType: 'FUND',
+        symbol: fundSymbol,
+        unit: 'pay',
+        isPhysical: false,
+        samplePrice: lookedUp?.estimatedPrice || 15.42,
+        sampleQty: 1000
+      };
+    }
+
+    // 2. Özel TEFAS Fonu (CUSTOM_FUND)
+    if (selectedAssetKey === 'CUSTOM_FUND') {
+      const upper = (customFundCode.trim() || 'TI2').toUpperCase();
+      const lookedUp = lookupTefasFund(upper);
+      return {
+        name: lookedUp ? lookedUp.name : `${upper} Fonu`,
+        subType: 'FUND',
+        symbol: upper,
+        unit: 'pay',
+        isPhysical: false,
+        samplePrice: lookedUp?.estimatedPrice || 15.42,
+        sampleQty: 1000
+      };
+    }
+
+    // 3. Ön tanımlı altın veya döviz
+    const found = PREDEFINED_ASSETS.find(a => a.key === selectedAssetKey);
+    if (found) {
+      return {
+        name: found.name,
+        subType: found.subType,
+        symbol: found.symbol,
+        unit: found.unit,
+        isPhysical: found.isPhysical,
+        samplePrice: found.samplePrice,
+        sampleQty: found.sampleQty
+      };
+    }
+
+    // 4. Geriye dönük hesap eşleşmesi (ACCOUNT_ ID)
     if (selectedAssetKey.startsWith('ACCOUNT_')) {
       const accId = selectedAssetKey.replace('ACCOUNT_', '');
       const acc = accounts.find(a => a.id === accId);
@@ -152,43 +228,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       };
     }
 
-    // 2. TEFAS Fonu girilmişse
-    if (selectedAssetKey === 'CUSTOM_FUND') {
-      const upper = (customFundCode.trim() || 'TI2').toUpperCase();
-      const lookedUp = lookupTefasFund(upper);
-      return {
-        name: lookedUp ? lookedUp.name : `${upper} Fonu`,
-        subType: 'FUND',
-        symbol: upper,
-        unit: 'pay',
-        isPhysical: false,
-        samplePrice: lookedUp?.estimatedPrice || 15.42,
-        sampleQty: 1000
-      };
-    }
-
-    // 3. Ön tanımlı altın veya döviz
-    const found = PREDEFINED_ASSETS.find(a => a.key === selectedAssetKey);
-    if (found) {
-      return {
-        name: found.name,
-        subType: found.subType,
-        symbol: found.symbol,
-        unit: found.unit,
-        isPhysical: found.isPhysical,
-        samplePrice: found.samplePrice,
-        sampleQty: found.sampleQty
-      };
-    }
-
     return {
-      name: 'Fiziki Gram Altın',
-      subType: 'GOLD_GRAM_PHYSICAL',
-      symbol: 'XAU_GR_PHYSICAL',
+      name: 'Banka Gram Altın',
+      subType: 'GOLD_GRAM_BANK',
+      symbol: 'XAU_GR_BANK',
       unit: 'gr',
-      isPhysical: true,
-      samplePrice: 6710,
-      sampleQty: 5
+      isPhysical: false,
+      samplePrice: 6560,
+      sampleQty: 4.5
     };
   };
 
@@ -518,10 +565,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
         // 3. Hesap bulunamadıysa yeni hesap oluştur ve bellek içi listeye ekle
         if (!targetAccount) {
+          let cleanAccName = row.assetName;
+          if (!cleanAccName.toLowerCase().includes(selectedGroup.name.toLowerCase())) {
+            cleanAccName = `${selectedGroup.name} ${cleanAccName}`.trim();
+          }
+
           const newAcc: Account = {
             id: `acc-import-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
             groupId: selectedGroupId,
-            name: `${selectedGroup.name} ${row.assetName}`.trim(),
+            name: cleanAccName,
             type: 'ASSET',
             subType: row.subType,
             symbol: row.symbol,
@@ -615,9 +667,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 onChange={(e) => {
                   const newGid = e.target.value;
                   setSelectedGroupId(newGid);
-                  if (selectedAssetKey.startsWith('ACCOUNT_')) {
-                    setSelectedAssetKey(getInitialAssetKey());
-                  }
                 }}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-medium text-xs focus:outline-none focus:border-amber-400 cursor-pointer"
               >
@@ -636,37 +685,43 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               </label>
               <select
                 value={selectedAssetKey}
-                onChange={(e) => setSelectedAssetKey(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedAssetKey(val);
+                  if (val.startsWith('FUND_')) {
+                    setCustomFundCode(val.replace('FUND_', '').toUpperCase());
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-amber-500/40 text-amber-300 font-bold text-xs focus:outline-none focus:border-amber-400 cursor-pointer"
               >
-                {/* Hesabın Mevcut Varlıkları (En üstte) */}
-                {groupAssetAccounts.length > 0 && (
-                  <optgroup label="📋 Hesabın Mevcut Varlıkları" className="bg-slate-900 text-slate-200">
-                    {groupAssetAccounts.map(a => (
-                      <option key={`acc_${a.id}`} value={`ACCOUNT_${a.id}`}>
-                        {a.name} ({a.symbol})
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-
                 {/* Altın */}
                 <optgroup label="🪙 Altın" className="bg-slate-900 text-slate-200">
                   {PREDEFINED_ASSETS.filter(a => a.category === 'GOLD').map(a => (
-                    <option key={a.key} value={a.key}>{a.name}</option>
+                    <option key={a.key} value={a.key} className="bg-slate-900 text-white font-medium">
+                      {a.name}
+                    </option>
                   ))}
                 </optgroup>
 
-                {/* Döviz (Yalnızca USD ve EUR) */}
+                {/* Döviz */}
                 <optgroup label="💶 Döviz" className="bg-slate-900 text-slate-200">
                   {PREDEFINED_ASSETS.filter(a => a.category === 'CURRENCY').map(a => (
-                    <option key={a.key} value={a.key}>{a.name}</option>
+                    <option key={a.key} value={a.key} className="bg-slate-900 text-white font-medium">
+                      {a.name}
+                    </option>
                   ))}
                 </optgroup>
 
-                {/* TEFAS Fonu (Tek esnek seçenek) */}
-                <optgroup label="📈 TEFAS Fonu" className="bg-slate-900 text-slate-200">
-                  <option value="CUSTOM_FUND">+ TEFAS Fon Kodu Gir (örn: TI2, MAC, AFT)...</option>
+                {/* TEFAS Fonları & Borsa */}
+                <optgroup label="📈 TEFAS Yatırım Fonları & Borsa" className="bg-slate-900 text-slate-200">
+                  {portfolioFunds.map(f => (
+                    <option key={`fund_${f.symbol}`} value={`FUND_${f.symbol!.toUpperCase()}`} className="bg-slate-900 text-white font-medium">
+                      {f.symbol} - {f.name}
+                    </option>
+                  ))}
+                  <option value="CUSTOM_FUND" className="bg-slate-900 text-amber-300 font-medium">
+                    + TEFAS Fon Kodu Gir (örn: TI2, MAC, AFT)...
+                  </option>
                 </optgroup>
               </select>
             </div>

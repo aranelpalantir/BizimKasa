@@ -35,6 +35,10 @@ interface FundsTrackerProps {
   transactions: AssetTransaction[];
   rates: MarketRate[];
   hideValues: boolean;
+  selectedFundSymbol?: string;
+  onSelectFundSymbol?: (symbol: string) => void;
+  selectedGroupId?: string;
+  onSelectGroup?: (groupId: string) => void;
 }
 
 type HistoryFilter = 'ALL' | '1M' | '3M' | '6M' | 'THIS_YEAR' | 'PREV_YEAR';
@@ -44,12 +48,31 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
   accounts,
   transactions,
   rates,
-  hideValues
+  hideValues,
+  selectedFundSymbol: selectedFundSymbolProp,
+  onSelectFundSymbol: onSelectFundSymbolProp,
+  selectedGroupId: selectedGroupIdProp,
+  onSelectGroup: onSelectGroupProp
 }) => {
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
+  const [internalGroupId, setInternalGroupId] = useState<string>('ALL');
+  const selectedGroupId = selectedGroupIdProp !== undefined ? selectedGroupIdProp : internalGroupId;
+
+  const [internalFundSymbol, setInternalFundSymbol] = useState<string>('');
+  const selectedFundSymbol = selectedFundSymbolProp !== undefined ? selectedFundSymbolProp : internalFundSymbol;
+
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
+
+  const handleSelectFund = (symbol: string) => {
+    const next = selectedFundSymbol.toUpperCase() === symbol.toUpperCase() ? '' : symbol;
+    if (onSelectFundSymbolProp) {
+      onSelectFundSymbolProp(next);
+    } else {
+      setInternalFundSymbol(next);
+    }
+    setSelectedTxIds(new Set());
+  };
 
   // Form State
   const [txType, setTxType] = useState<'BUY' | 'SELL'>('BUY');
@@ -202,6 +225,10 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
   // History filtering
   const allFundTxs = transactions.filter(t => matchingAccountIds.has(t.accountId));
   const filteredTxs = allFundTxs.filter((tx) => {
+    if (selectedFundSymbol) {
+      const acc = accounts.find(a => a.id === tx.accountId);
+      if (acc?.symbol?.toUpperCase() !== selectedFundSymbol.toUpperCase()) return false;
+    }
     if (historyFilter === 'ALL') return true;
     const txTime = new Date(tx.date).getTime();
     const now = Date.now();
@@ -547,7 +574,11 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
         groups={groupsWithFunds.length > 0 ? groupsWithFunds : groups}
         selectedGroupId={selectedGroupId}
         onSelectGroup={(g) => {
-          setSelectedGroupId(g);
+          if (onSelectGroupProp) {
+            onSelectGroupProp(g);
+          } else {
+            setInternalGroupId(g);
+          }
           setSelectedTxIds(new Set());
         }}
         title="Hesap"
@@ -830,16 +861,36 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                 </td>
               </tr>
             ) : (
-              sortedFundData.map((f) => (
-                <tr key={f.account.id} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="py-3 px-4 font-sans">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold font-mono border border-emerald-500/20 text-xs">
-                        {f.symbol}
-                      </span>
-                      <span className="font-semibold text-slate-200 truncate max-w-[160px]">{f.name}</span>
-                    </div>
-                  </td>
+              sortedFundData.map((f) => {
+                const isSelected = selectedFundSymbol.toUpperCase() === f.symbol.toUpperCase();
+                return (
+                  <tr 
+                    key={f.account.id} 
+                    onClick={() => handleSelectFund(f.symbol)}
+                    className={`cursor-pointer transition-colors ${
+                      isSelected 
+                        ? 'bg-emerald-500/15 border-l-4 border-emerald-400' 
+                        : 'hover:bg-white/[0.02]'
+                    }`}
+                    title={`${f.symbol} fonunu seçmek için tıklayın`}
+                  >
+                    <td className="py-3 px-4 font-sans">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-lg font-bold font-mono border text-xs ${
+                          isSelected 
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm' 
+                            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        }`}>
+                          {f.symbol}
+                        </span>
+                        <span className="font-semibold text-slate-200 truncate max-w-[160px]">{f.name}</span>
+                        {isSelected && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold font-mono">
+                            Seçili
+                          </span>
+                        )}
+                      </div>
+                    </td>
                   <td className="py-3 px-2.5 font-sans">
                     {selectedGroupId === 'ALL' ? (
                       <div className="flex flex-wrap items-center gap-1">
@@ -892,8 +943,9 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                     </button>
                   </td>
                 </tr>
-              ))
-            )}
+              );
+            })
+          )}
           </tbody>
         </table>
       </div>
@@ -914,10 +966,27 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
               className="w-4 h-4 rounded border-white/20 bg-slate-950 text-emerald-500 focus:ring-0 cursor-pointer accent-emerald-500"
               title={isAllSelected ? 'Tüm seçimleri kaldır' : 'Tüm filtrelenmiş işlemleri seç'}
             />
-            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+            <h4 className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
               <History className="w-3.5 h-3.5 text-emerald-400" />
               <span>Fon Alış & Satış Hareket Geçmişi</span>
-              <span className="text-[10px] text-slate-400 font-normal">({filteredTxs.length} İşlem)</span>
+              {selectedFundSymbol ? (
+                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  <span>Filtre: {selectedFundSymbol}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectFund(selectedFundSymbol);
+                    }}
+                    className="hover:text-white ml-0.5 font-bold"
+                    title="Filtreyi kaldır"
+                  >
+                    ×
+                  </button>
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400 font-normal">({filteredTxs.length} İşlem)</span>
+              )}
             </h4>
           </div>
 

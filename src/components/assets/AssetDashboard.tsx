@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Coins, Euro, LineChart, FileSpreadsheet, Plus } from 'lucide-react';
-import { GoldTracker } from './GoldTracker';
+import { GoldTracker, type GoldTypeTab } from './GoldTracker';
 import { CurrencyTracker } from './CurrencyTracker';
 import { FundsTracker } from './FundsTracker';
 import { ImportModal } from './ImportModal';
@@ -23,8 +23,42 @@ export const AssetDashboard: React.FC<AssetDashboardProps> = ({
   hideValues
 }) => {
   const [activeTab, setActiveTab] = useState<'gold' | 'currency' | 'funds'>('gold');
+  const [selectedGoldType, setSelectedGoldType] = useState<GoldTypeTab>('BANK_GRAM');
+  const [selectedCurrency, setSelectedCurrency] = useState<'EUR' | 'USD'>('EUR');
+  const [selectedFundSymbol, setSelectedFundSymbol] = useState<string>('');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
+
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
+
+  // Determine which asset key to pre-select in ImportModal
+  const getSelectedAssetKey = (): string => {
+    if (activeTab === 'gold') {
+      switch (selectedGoldType) {
+        case 'BANK_GRAM': return 'GOLD_GRAM_BANK';
+        case 'PHYSICAL_GRAM': return 'GOLD_GRAM_PHYSICAL';
+        case 'CEYREK': return 'GOLD_CEYREK';
+        case 'YARIM': return 'GOLD_YARIM';
+        case 'TAM': return 'GOLD_TAM';
+        case 'CUMHURIYET': return 'GOLD_CUMHURIYET';
+        default: return 'GOLD_GRAM_BANK';
+      }
+    }
+    if (activeTab === 'currency') {
+      return selectedCurrency === 'USD' ? 'CURRENCY_USD' : 'CURRENCY_EUR';
+    }
+    if (activeTab === 'funds') {
+      if (selectedFundSymbol) {
+        return `FUND_${selectedFundSymbol.toUpperCase()}`;
+      }
+      const firstFund = accounts.find(a => a.type === 'ASSET' && (a.subType === 'FUND' || a.subType === 'STOCK') && a.symbol);
+      if (firstFund?.symbol) {
+        return `FUND_${firstFund.symbol.toUpperCase()}`;
+      }
+      return 'CUSTOM_FUND';
+    }
+    return 'GOLD_GRAM_BANK';
+  };
 
   return (
     <div className="space-y-4">
@@ -95,6 +129,10 @@ export const AssetDashboard: React.FC<AssetDashboardProps> = ({
           transactions={transactions}
           rates={rates}
           hideValues={hideValues}
+          activeGoldType={selectedGoldType}
+          onSelectGoldType={setSelectedGoldType}
+          selectedGroupId={selectedGroupId}
+          onSelectGroup={setSelectedGroupId}
         />
       )}
 
@@ -105,6 +143,10 @@ export const AssetDashboard: React.FC<AssetDashboardProps> = ({
           transactions={transactions}
           rates={rates}
           hideValues={hideValues}
+          selectedCurrency={selectedCurrency}
+          onSelectCurrency={setSelectedCurrency}
+          selectedGroupId={selectedGroupId}
+          onSelectGroup={setSelectedGroupId}
         />
       )}
 
@@ -115,6 +157,10 @@ export const AssetDashboard: React.FC<AssetDashboardProps> = ({
           transactions={transactions}
           rates={rates}
           hideValues={hideValues}
+          selectedFundSymbol={selectedFundSymbol}
+          onSelectFundSymbol={setSelectedFundSymbol}
+          selectedGroupId={selectedGroupId}
+          onSelectGroup={setSelectedGroupId}
         />
       )}
 
@@ -125,6 +171,8 @@ export const AssetDashboard: React.FC<AssetDashboardProps> = ({
         groups={groups}
         accounts={accounts}
         defaultCategory={activeTab}
+        defaultAssetKey={getSelectedAssetKey()}
+        defaultGroupId={selectedGroupId !== 'ALL' ? selectedGroupId : undefined}
       />
 
       {/* Add Account Modal */}

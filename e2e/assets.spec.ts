@@ -226,5 +226,74 @@ test.describe('Varlıklar (Altın, Döviz ve Fon Takibi)', () => {
     await expect(page.getByText('Silinecek İslem 1')).toHaveCount(0);
     await expect(page.getByText('Silinecek İslem 2')).toHaveCount(0);
   });
+
+  test('içeri aktar modalı açılırken aktif seçili varlık (çeyrek altın, döviz, fon) otomatik seçili gelir', async ({ page }) => {
+    // 1. Altın sekmesinde Çeyrek Altın seç
+    await page.getByRole('button', { name: 'Altın', exact: true }).click();
+    await page.getByRole('button', { name: 'Çeyrek Altın' }).click();
+
+    // Excel / CSV İçe Aktar modalını aç
+    await page.getByRole('button', { name: 'Excel / CSV İçe Aktar' }).click();
+    let importModal = page.locator('div[role="dialog"]');
+    await expect(importModal).toBeVisible();
+
+    // 2. Aktarılacak Varlık Türü select değerini kontrol et -> GOLD_CEYREK olmalı
+    let assetSelect = importModal.locator('select').nth(1);
+    await expect(assetSelect).toHaveValue('GOLD_CEYREK');
+
+    // Modalı kapat
+    await importModal.getByRole('button', { name: 'Vazgeç' }).click();
+    await expect(importModal).not.toBeVisible();
+
+    // 2. Cumhuriyet Altını seç
+    await page.getByRole('button', { name: 'Cumhuriyet Altını' }).click();
+    await page.getByRole('button', { name: 'Excel / CSV İçe Aktar' }).click();
+    importModal = page.locator('div[role="dialog"]');
+    await expect(importModal).toBeVisible();
+    assetSelect = importModal.locator('select').nth(1);
+    await expect(assetSelect).toHaveValue('GOLD_CUMHURIYET');
+
+    await importModal.getByRole('button', { name: 'Vazgeç' }).click();
+    await expect(importModal).not.toBeVisible();
+
+    // 3. Döviz sekmesine geç ve Dolar seç
+    await page.getByRole('button', { name: 'Döviz (EUR & USD)', exact: true }).click();
+    await page.getByRole('button', { name: 'Dolar (USD)' }).click();
+    await page.getByRole('button', { name: 'Excel / CSV İçe Aktar' }).click();
+    importModal = page.locator('div[role="dialog"]');
+    await expect(importModal).toBeVisible();
+    assetSelect = importModal.locator('select').nth(1);
+    await expect(assetSelect).toHaveValue('CURRENCY_USD');
+
+    await importModal.getByRole('button', { name: 'Vazgeç' }).click();
+    await expect(importModal).not.toBeVisible();
+
+    // 4. Dövizde Euro seç
+    await page.getByRole('button', { name: 'Euro (EUR)' }).click();
+    await page.getByRole('button', { name: 'Excel / CSV İçe Aktar' }).click();
+    importModal = page.locator('div[role="dialog"]');
+    await expect(importModal).toBeVisible();
+    assetSelect = importModal.locator('select').nth(1);
+    await expect(assetSelect).toHaveValue('CURRENCY_EUR');
+
+    await importModal.getByRole('button', { name: 'Vazgeç' }).click();
+    await expect(importModal).not.toBeVisible();
+
+    // 5. Yatırım fonları sekmesine geç
+    await page.getByRole('button', { name: 'Yatırım Fonları & Borsa', exact: true }).click();
+    const ti2Row = page.locator('tr:has-text("TI2")');
+    if (await ti2Row.count() > 0) {
+      await ti2Row.first().click();
+    }
+    await page.getByRole('button', { name: 'Excel / CSV İçe Aktar' }).click();
+    importModal = page.locator('div[role="dialog"]');
+    await expect(importModal).toBeVisible();
+    assetSelect = importModal.locator('select').nth(1);
+    const selectedVal = await assetSelect.inputValue();
+    expect(selectedVal === 'FUND_TI2' || selectedVal.startsWith('FUND_') || selectedVal === 'CUSTOM_FUND').toBeTruthy();
+
+    await importModal.getByRole('button', { name: 'Vazgeç' }).click();
+    await expect(importModal).not.toBeVisible();
+  });
 });
 

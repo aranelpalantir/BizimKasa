@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import { seedInitialDataIfNeeded, forceResetWithDummyData } from './db/seed';
-import { fetchLiveRatesMultiSource, cleanupDeprecatedRates, syncTefasFundRatesWithAssets } from './services/ratesService';
+import { fetchLiveRatesMultiSource, cleanupDeprecatedRates, cleanupDuplicateAssetAccounts, syncTefasFundRatesWithAssets } from './services/ratesService';
 import { getSettings, updateSettings } from './services/securityService';
 import { Navbar } from './components/common/Navbar';
 import { BottomNav, type TabType } from './components/common/BottomNav';
@@ -70,8 +70,9 @@ export const App: React.FC = () => {
 
     setIsInitializing(false);
 
-    // Clean up deprecated rates (GBP, XAG), sync TEFAS funds with active assets, and fetch fresh rates
+    // Clean up deprecated rates (GBP, XAG), deduplicate duplicate asset accounts, sync TEFAS funds with active assets, and fetch fresh rates
     await cleanupDeprecatedRates();
+    await cleanupDuplicateAssetAccounts();
     await syncTefasFundRatesWithAssets();
     fetchLiveRatesMultiSource().catch(console.warn);
   };

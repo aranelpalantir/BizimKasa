@@ -13,6 +13,10 @@ interface CurrencyTrackerProps {
   transactions: AssetTransaction[];
   rates: MarketRate[];
   hideValues: boolean;
+  selectedCurrency?: 'EUR' | 'USD';
+  onSelectCurrency?: (curr: 'EUR' | 'USD') => void;
+  selectedGroupId?: string;
+  onSelectGroup?: (groupId: string) => void;
 }
 
 const MONTH_NAMES = [
@@ -27,10 +31,17 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
   accounts,
   transactions,
   rates,
-  hideValues
+  hideValues,
+  selectedCurrency: selectedCurrencyProp,
+  onSelectCurrency: onSelectCurrencyProp,
+  selectedGroupId: selectedGroupIdProp,
+  onSelectGroup: onSelectGroupProp
 }) => {
-  const [selectedCurrency, setSelectedCurrency] = useState<'EUR' | 'USD'>('EUR');
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
+  const [internalCurrency, setInternalCurrency] = useState<'EUR' | 'USD'>('EUR');
+  const selectedCurrency = selectedCurrencyProp !== undefined ? selectedCurrencyProp : internalCurrency;
+
+  const [internalGroupId, setInternalGroupId] = useState<string>('ALL');
+  const selectedGroupId = selectedGroupIdProp !== undefined ? selectedGroupIdProp : internalGroupId;
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
   const [historyYearFilter, setHistoryYearFilter] = useState<string>('ALL');
@@ -372,7 +383,11 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
         <div className="flex p-1 rounded-xl bg-slate-800 border border-white/5">
           <button
             onClick={() => {
-              setSelectedCurrency('EUR');
+              if (onSelectCurrencyProp) {
+                onSelectCurrencyProp('EUR');
+              } else {
+                setInternalCurrency('EUR');
+              }
               setSelectedTxIds(new Set());
             }}
             className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
@@ -384,7 +399,11 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
           </button>
           <button
             onClick={() => {
-              setSelectedCurrency('USD');
+              if (onSelectCurrencyProp) {
+                onSelectCurrencyProp('USD');
+              } else {
+                setInternalCurrency('USD');
+              }
               setSelectedTxIds(new Set());
             }}
             className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
@@ -410,7 +429,11 @@ export const CurrencyTracker: React.FC<CurrencyTrackerProps> = ({
         groups={groupsWithCurrency.length > 0 ? groupsWithCurrency : groups}
         selectedGroupId={selectedGroupId}
         onSelectGroup={(g) => {
-          setSelectedGroupId(g);
+          if (onSelectGroupProp) {
+            onSelectGroupProp(g);
+          } else {
+            setInternalGroupId(g);
+          }
           setSelectedTxIds(new Set());
         }}
         title="Hesap"

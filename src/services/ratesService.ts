@@ -74,6 +74,78 @@ export async function cleanupDeprecatedRates(): Promise<void> {
 }
 
 /**
+ * Automatically cleans up duplicate ASSET accounts within the same group:
+ * E.g., multiple "Amerikan Doları (USD)" or "Banka Gram Altın" accounts created accidentally.
+ * Re-points all transactions and cashFlowEntries to the canonical account and deletes duplicates.
+ */
+export async function cleanupDuplicateAssetAccounts(): Promise<number> {
+  try {
+    const allAccounts = await db.accounts.where('type').equals('ASSET').toArray();
+    const map = new Map<string, typeof allAccounts>();
+
+    for (const acc of allAccounts) {
+      let key = '';
+      if (acc.subType?.startsWith('GOLD_')) {
+        key = `${acc.groupId}_${acc.subType}`;
+      } else if (acc.subType === 'CURRENCY') {
+        const curSym = (acc.symbol || acc.currency || '').toUpperCase();
+        key = `${acc.groupId}_CURRENCY_${curSym}`;
+      } else if (acc.subType === 'FUND' || acc.subType === 'STOCK') {
+        const fSym = (acc.symbol || '').toUpperCase();
+        key = `${acc.groupId}_FUND_${fSym}`;
+      } else {
+        key = `${acc.groupId}_${acc.subType}_${(acc.symbol || '').toUpperCase()}`;
+      }
+
+      if (!map.has(key)) {
+        map.set(key, []);
+      }
+      map.get(key)!.push(acc);
+    }
+
+    let cleaned = 0;
+
+    for (const [, list] of map.entries()) {
+      if (list.length <= 1) continue;
+
+      // Prefer canonical account: seed id (not starting with 'acc-import-'), or earliest createdAt / lowest order
+      list.sort((a, b) => {
+        const aIsImport = a.id.startsWith('acc-import-');
+        const bIsImport = b.id.startsWith('acc-import-');
+        if (aIsImport !== bIsImport) return aIsImport ? 1 : -1;
+        return (a.order || 0) - (b.order || 0);
+      });
+
+      const canonical = list[0];
+      const duplicates = list.slice(1);
+
+      for (const dup of duplicates) {
+        // Re-point transactions
+        const txs = await db.transactions.where('accountId').equals(dup.id).toArray();
+        for (const tx of txs) {
+          await db.transactions.update(tx.id, { accountId: canonical.id });
+        }
+
+        // Re-point cash flow entries
+        const cfs = await db.cashFlowEntries.where('accountId').equals(dup.id).toArray();
+        for (const cf of cfs) {
+          await db.cashFlowEntries.update(cf.id, { accountId: canonical.id });
+        }
+
+        // Delete duplicate account
+        await db.accounts.delete(dup.id);
+        cleaned++;
+      }
+    }
+
+    return cleaned;
+  } catch (err) {
+    console.warn('Duplicate accounts cleanup warning:', err);
+    return 0;
+  }
+}
+
+/**
  * Synchronize TEFAS fund rates with the user's active asset holdings.
  * - Only funds with active, positive balance (boughtQty - soldQty > 0) are kept in marketRates.
  * - If a fund's overall balance is 0 (or no accounts/transactions exist), it is removed from marketRates.

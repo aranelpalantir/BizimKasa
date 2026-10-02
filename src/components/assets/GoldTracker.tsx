@@ -7,12 +7,18 @@ import { db } from '../../db/db';
 import { formatTRY, formatNumber, parseUserInputNumber, formatForInput } from '../../services/portfolioService';
 import type { Account, AssetTransaction, MarketRate, Group, AssetSubType } from '../../types/finance';
 
+export type GoldTypeTab = 'BANK_GRAM' | 'PHYSICAL_GRAM' | 'CEYREK' | 'YARIM' | 'TAM' | 'CUMHURIYET';
+
 interface GoldTrackerProps {
   groups: Group[];
   accounts: Account[];
   transactions: AssetTransaction[];
   rates: MarketRate[];
   hideValues: boolean;
+  activeGoldType?: GoldTypeTab;
+  onSelectGoldType?: (type: GoldTypeTab) => void;
+  selectedGroupId?: string;
+  onSelectGroup?: (groupId: string) => void;
 }
 
 const MONTH_NAMES = [
@@ -20,7 +26,6 @@ const MONTH_NAMES = [
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ];
 
-type GoldTypeTab = 'BANK_GRAM' | 'PHYSICAL_GRAM' | 'CEYREK' | 'YARIM' | 'TAM' | 'CUMHURIYET';
 type HistoryFilter = 'ALL' | '1M' | '3M' | '6M' | 'THIS_YEAR' | 'PREV_YEAR';
 
 export const GoldTracker: React.FC<GoldTrackerProps> = ({
@@ -28,11 +33,18 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   accounts,
   transactions,
   rates,
-  hideValues
+  hideValues,
+  activeGoldType: activeGoldTypeProp,
+  onSelectGoldType: onSelectGoldTypeProp,
+  selectedGroupId: selectedGroupIdProp,
+  onSelectGroup: onSelectGroupProp
 }) => {
   const [selectedYear, setSelectedYear] = useState<number>(2026);
-  const [activeGoldType, setActiveGoldType] = useState<GoldTypeTab>('BANK_GRAM');
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
+  const [internalGoldType, setInternalGoldType] = useState<GoldTypeTab>('BANK_GRAM');
+  const activeGoldType = activeGoldTypeProp !== undefined ? activeGoldTypeProp : internalGoldType;
+
+  const [internalGroupId, setInternalGroupId] = useState<string>('ALL');
+  const selectedGroupId = selectedGroupIdProp !== undefined ? selectedGroupIdProp : internalGroupId;
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
   const [historyYearFilter, setHistoryYearFilter] = useState<string>('ALL');
   const [historyStartDate, setHistoryStartDate] = useState<string>('');
@@ -503,7 +515,11 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
   };
 
   const handleSelectGoldType = (type: GoldTypeTab) => {
-    setActiveGoldType(type);
+    if (onSelectGoldTypeProp) {
+      onSelectGoldTypeProp(type);
+    } else {
+      setInternalGoldType(type);
+    }
     setSelectedTxIds(new Set());
   };
 
@@ -694,7 +710,11 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
         groups={groupsWithGold.length > 0 ? groupsWithGold : groups}
         selectedGroupId={selectedGroupId}
         onSelectGroup={(g) => {
-          setSelectedGroupId(g);
+          if (onSelectGroupProp) {
+            onSelectGroupProp(g);
+          } else {
+            setInternalGroupId(g);
+          }
           setSelectedTxIds(new Set());
         }}
         title="Hesap"
