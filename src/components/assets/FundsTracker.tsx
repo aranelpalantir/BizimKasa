@@ -172,10 +172,18 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     }
     const holdingGroups = groups.filter(g => txGroupIds.includes(g.id));
 
+    const tefas = acc.symbol ? lookupTefasFund(acc.symbol) : null;
+    let cleanName = acc.name;
+    if (tefas) {
+      cleanName = tefas.name;
+    } else if (grp && cleanName.toLowerCase().startsWith(grp.name.toLowerCase() + ' ')) {
+      cleanName = cleanName.slice(grp.name.length + 1).trim();
+    }
+
     return {
       account: acc,
       symbol,
-      name: acc.name,
+      name: cleanName,
       groupName: grp?.name,
       groupColor: grp?.color,
       holdingGroups,
@@ -813,7 +821,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                   {sortField === 'symbol' && <span>{sortAsc ? '▲' : '▼'}</span>}
                 </div>
               </th>
-              <th className="py-3 px-2.5 text-left">Hesap</th>
+              {selectedGroupId === 'ALL' && <th className="py-3 px-2.5 text-left">Hesap</th>}
               <th onClick={() => handleSort('netQty')} className="py-3 px-3 text-right cursor-pointer hover:text-white">
                 <div className="flex items-center justify-end gap-1">
                   <span>Adet</span>
@@ -856,7 +864,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
           <tbody className="divide-y divide-white/5 font-mono">
             {sortedFundData.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-6 text-center text-slate-400 font-sans text-xs">
+                <td colSpan={selectedGroupId === 'ALL' ? 9 : 8} className="py-6 text-center text-slate-400 font-sans text-xs">
                   Bu hesapta kayıtlı fon bulunmuyor.
                 </td>
               </tr>
@@ -883,7 +891,9 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                         }`}>
                           {f.symbol}
                         </span>
-                        <span className="font-semibold text-slate-200 truncate max-w-[160px]">{f.name}</span>
+                        <span className="font-semibold text-slate-200 truncate max-w-[240px]" title={f.name}>
+                          {f.name}
+                        </span>
                         {isSelected && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold font-mono">
                             Seçili
@@ -891,30 +901,21 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                         )}
                       </div>
                     </td>
-                  <td className="py-3 px-2.5 font-sans">
-                    {selectedGroupId === 'ALL' ? (
-                      <div className="flex flex-wrap items-center gap-1">
-                        {f.holdingGroups.map((g) => (
-                          <span
-                            key={g.id}
-                            className="text-[10px] px-2 py-0.5 rounded font-semibold whitespace-nowrap"
-                            style={{ backgroundColor: `${g.color}20`, color: g.color }}
-                          >
-                            {g.name}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      f.groupName && (
-                        <span
-                          className="text-[10px] px-2 py-0.5 rounded font-semibold whitespace-nowrap"
-                          style={{ backgroundColor: `${f.groupColor}20`, color: f.groupColor }}
-                        >
-                          {f.groupName}
-                        </span>
-                      )
+                    {selectedGroupId === 'ALL' && (
+                      <td className="py-3 px-2.5 font-sans">
+                        <div className="flex flex-wrap items-center gap-1">
+                          {f.holdingGroups.map((g) => (
+                            <span
+                              key={g.id}
+                              className="text-[10px] px-2 py-0.5 rounded font-semibold whitespace-nowrap"
+                              style={{ backgroundColor: `${g.color}20`, color: g.color }}
+                            >
+                              {g.name}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
                     )}
-                  </td>
                   <td className="py-3 px-3 text-right text-slate-300">
                     {formatNumber(f.netQty, 0, hideValues)}
                   </td>
@@ -1091,7 +1092,7 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                         <span className="text-slate-400 text-[11px]">
                           • {formatNumber(tx.quantity, 0, hideValues)} adet
                         </span>
-                        {grp && (
+                        {selectedGroupId === 'ALL' && grp && (
                           <span
                             className="text-[9px] px-1.5 py-0.2 rounded font-semibold"
                             style={{ backgroundColor: `${grp.color}20`, color: grp.color }}
@@ -1236,11 +1237,19 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                   }}
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
                 >
-                  {matchingFundAccounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.symbol ? `[${acc.symbol}] ` : ''}{acc.name}
-                    </option>
-                  ))}
+                  {matchingFundAccounts.map((acc) => {
+                    const tefas = acc.symbol ? lookupTefasFund(acc.symbol) : null;
+                    let displayName = tefas ? tefas.name : acc.name;
+                    const grp = groups.find(g => g.id === acc.groupId);
+                    if (!tefas && grp && displayName.toLowerCase().startsWith(grp.name.toLowerCase() + ' ')) {
+                      displayName = displayName.slice(grp.name.length + 1).trim();
+                    }
+                    return (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.symbol ? `[${acc.symbol}] ` : ''}{displayName}
+                      </option>
+                    );
+                  })}
                 </select>
               ) : (
                 <div className="space-y-3 p-3 rounded-xl bg-slate-950/60 border border-amber-500/20">

@@ -362,7 +362,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       return { name: 'Fiziki Gram Altın', subType: 'GOLD_GRAM_PHYSICAL', symbol: 'XAU_GR_PHYSICAL', unit: 'gr', isPhysical: true };
     }
     const sym = rawType.toUpperCase().trim();
-    return { name: `${sym} Fonu`, subType: 'FUND', symbol: sym, unit: 'pay', isPhysical: false };
+    const lookedUp = lookupTefasFund(sym);
+    return { name: lookedUp ? lookedUp.name : `${sym} Fonu`, subType: 'FUND', symbol: sym, unit: 'pay', isPhysical: false };
   };
 
   // Core Parsing Function
@@ -566,8 +567,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         // 3. Hesap bulunamadıysa yeni hesap oluştur ve bellek içi listeye ekle
         if (!targetAccount) {
           let cleanAccName = row.assetName;
-          if (!cleanAccName.toLowerCase().includes(selectedGroup.name.toLowerCase())) {
-            cleanAccName = `${selectedGroup.name} ${cleanAccName}`.trim();
+          if (row.subType !== 'FUND' && row.subType !== 'STOCK') {
+            if (!cleanAccName.toLowerCase().includes(selectedGroup.name.toLowerCase())) {
+              cleanAccName = `${selectedGroup.name} ${cleanAccName}`.trim();
+            }
+          } else {
+            const tefas = row.symbol ? lookupTefasFund(row.symbol) : null;
+            cleanAccName = tefas ? tefas.name : (cleanAccName || `${row.symbol} Fonu`);
           }
 
           const newAcc: Account = {
@@ -714,11 +720,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
                 {/* TEFAS Fonları & Borsa */}
                 <optgroup label="📈 TEFAS Yatırım Fonları & Borsa" className="bg-slate-900 text-slate-200">
-                  {portfolioFunds.map(f => (
-                    <option key={`fund_${f.symbol}`} value={`FUND_${f.symbol!.toUpperCase()}`} className="bg-slate-900 text-white font-medium">
-                      {f.symbol} - {f.name}
-                    </option>
-                  ))}
+                  {portfolioFunds.map(f => {
+                    const tefas = f.symbol ? lookupTefasFund(f.symbol) : null;
+                    let displayName = tefas ? tefas.name : f.name;
+                    const grp = groups.find(g => g.id === f.groupId);
+                    if (!tefas && grp && displayName.toLowerCase().startsWith(grp.name.toLowerCase() + ' ')) {
+                      displayName = displayName.slice(grp.name.length + 1).trim();
+                    }
+                    return (
+                      <option key={`fund_${f.symbol}`} value={`FUND_${f.symbol!.toUpperCase()}`} className="bg-slate-900 text-white font-medium">
+                        {f.symbol} - {displayName}
+                      </option>
+                    );
+                  })}
                   <option value="CUSTOM_FUND" className="bg-slate-900 text-amber-300 font-medium">
                     + TEFAS Fon Kodu Gir (örn: TI2, MAC, AFT)...
                   </option>

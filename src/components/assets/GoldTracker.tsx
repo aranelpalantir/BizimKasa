@@ -1139,7 +1139,7 @@ export const GoldTracker: React.FC<GoldTrackerProps> = ({
                         <span className="text-slate-200 font-medium">
                           {formatNumber(tx.quantity, isPieceGold ? 0 : 2, hideValues)} {unitLabel}
                         </span>
-                        {grp && (
+                        {selectedGroupId === 'ALL' && grp && (
                           <span
                             className="text-[9px] px-1.5 py-0.2 rounded font-semibold"
                             style={{ backgroundColor: `${grp.color}20`, color: grp.color }}

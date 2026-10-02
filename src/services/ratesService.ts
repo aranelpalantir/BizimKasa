@@ -138,6 +138,38 @@ export async function cleanupDuplicateAssetAccounts(): Promise<number> {
       }
     }
 
+    // 2. Sanitize fund account names: remove prepended group names and apply canonical TEFAS names
+    const groups = await db.groups.toArray();
+    const groupMap = new Map(groups.map(g => [g.id, g.name]));
+    const remainingFundAccounts = await db.accounts.where('type').equals('ASSET').toArray();
+    for (const acc of remainingFundAccounts) {
+      if (acc.subType === 'FUND' || acc.subType === 'STOCK') {
+        const sym = (acc.symbol || '').toUpperCase();
+        const tefas = sym ? lookupTefasFund(sym) : null;
+        const grpName = groupMap.get(acc.groupId);
+        let desiredName = acc.name;
+
+        if (tefas) {
+          desiredName = tefas.name;
+        } else if (grpName && desiredName.toLowerCase().startsWith(grpName.toLowerCase() + ' ')) {
+          desiredName = desiredName.slice(grpName.length + 1).trim();
+        }
+
+        if (desiredName && desiredName !== acc.name) {
+          await db.accounts.update(acc.id, { name: desiredName });
+        }
+      }
+    }
+
+    // 3. Sanitize fund records in db.marketRates
+    const fundRates = await db.marketRates.where('category').equals('FUND').toArray();
+    for (const fr of fundRates) {
+      const tefas = lookupTefasFund(fr.symbol);
+      if (tefas && fr.name !== tefas.name) {
+        await db.marketRates.update(fr.symbol, { name: tefas.name });
+      }
+    }
+
     return cleaned;
   } catch (err) {
     console.warn('Duplicate accounts cleanup warning:', err);
