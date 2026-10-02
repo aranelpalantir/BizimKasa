@@ -158,7 +158,8 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     const costTRY = netQty * avgCost;
 
     const symbol = acc.symbol || acc.name;
-    const currentRate = rateMap.get(symbol) || (netQty > 0 ? (accTxs[0]?.unitPriceTRY || avgCost) : 1);
+    const marketRateVal = rateMap.get(symbol);
+    const currentRate = (marketRateVal !== undefined && marketRateVal > 0) ? marketRateVal : (avgCost > 0 ? avgCost : (accTxs[0]?.unitPriceTRY || 0));
     const valueTRY = netQty * currentRate;
     const profitLossTRY = valueTRY - costTRY;
     const profitLossPct = costTRY > 0 ? (profitLossTRY / costTRY) * 100 : 0;
@@ -294,9 +295,6 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       const matched = lookupTefasFund(upper);
       if (matched) {
         setNewFundName(matched.name);
-        if (!unitPrice) {
-          setUnitPrice(formatForInput(matched.estimatedPrice));
-        }
       }
     } else {
       setFundSuggestions([]);
@@ -307,10 +305,6 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
     setNewFundCode(code);
     setNewFundName(name);
     setFundSuggestions([]);
-    const matched = lookupTefasFund(code);
-    if (matched && !unitPrice) {
-      setUnitPrice(matched.estimatedPrice.toString());
-    }
   };
 
   const handleOpenModal = () => {
@@ -357,15 +351,17 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       await db.accounts.add(newAcc);
       targetAccId = newAcc.id;
 
-      // Add default market rate
-      const p = parseUserInputNumber(unitPrice) || 10;
+      // Add default market rate using user's entered purchase price or 0
+      const qNum = parseUserInputNumber(quantity);
+      const tNum = parseUserInputNumber(totalTRY);
+      const p = parseUserInputNumber(unitPrice) || (qNum > 0 ? tNum / qNum : 0);
       await db.marketRates.put({
         symbol: code,
         name: newAcc.name,
         category: 'FUND',
         rateTRY: p,
-        changeDailyPct: 0.5,
-        source: 'TEFAS',
+        changeDailyPct: 0,
+        source: p > 0 ? 'Alış Fiyatı' : 'Fiyat Girilmedi',
         dataDate: new Date().toISOString().split('T')[0],
         updatedAt: new Date().toISOString(),
         isManualOverride: false

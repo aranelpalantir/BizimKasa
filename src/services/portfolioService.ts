@@ -99,7 +99,9 @@ export function calculatePortfolioSummary(
     // Rate resolution
     const symbol = account.symbol || '';
     const rateRecord = rateMap.get(symbol);
-    const currentRateTRY = rateRecord?.rateTRY || avgCostTRY || 1;
+    const currentRateTRY = (rateRecord && rateRecord.rateTRY > 0)
+      ? rateRecord.rateTRY
+      : (avgCostTRY > 0 ? avgCostTRY : 0);
     const dailyChangePct = rateRecord?.changeDailyPct || 0;
 
     const currentValueTRY = netQuantity * currentRateTRY;

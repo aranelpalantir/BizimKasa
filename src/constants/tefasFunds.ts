@@ -1,0 +1,151 @@
+export interface TefasFundInfo {
+  name: string;
+  category?: string;
+}
+
+export const TEFAS_FUNDS_DICTIONARY: Record<string, TefasFundInfo> = {
+  'AAL': { name: 'ATA PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'AC4': { name: 'PARDUS PORTFÖY PARA PİYASASI (TL) FON', category: 'Para Piyasası Fonu' },
+  'AFT': { name: 'Ak Portföy Yeni Teknolojiler Yabancı Hisse Senedi Fonu', category: 'Yabancı Hisse Fonu' },
+  'ALE': { name: 'AK PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'ANL': { name: 'AK PORTFÖY ALTERNATİF BANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'BGP': { name: 'AK PORTFÖY ÜÇÜNCÜ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'BIO': { name: 'İş Portföy Yenilenebilir Enerji Karma Fon', category: 'Karma Fon' },
+  'BPZ': { name: 'BULLS PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'BRG': { name: 'TEB PORTFÖY BURGAN BANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'BUY': { name: 'Bülbülzade Portföy Birinci Değişken Fon', category: 'Değişken Fon' },
+  'BVF': { name: 'BV PORTFÖY PARA PİYASASI (TL) FON', category: 'Para Piyasası Fonu' },
+  'CFO': { name: 'ROTA PORTFÖY İKİNCİ PARA PİYASASI FONU', category: 'Para Piyasası Fonu' },
+  'DCN': { name: 'DENİZ PORTFÖY ÜÇÜNCÜ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'DL2': { name: 'DENİZ PORTFÖY İKİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'DLY': { name: 'DENİZ PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'DVT': { name: 'Deniz Portföy Dijital Teknolojiler Değişken Fon', category: 'Değişken Fon' },
+  'ECB': { name: 'GLOBAL MD PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'EIL': { name: 'ASTRA PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'EKL': { name: 'KUVEYT TÜRK PORTFÖY EMLAK KATILIM BANKASI PARA PİYASASI KATILIM FONU', category: 'Katılım Fonu' },
+  'ENR': { name: 'QNB PORTFÖY ENPARA PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'EPA': { name: 'EMAA BLUE PORTFÖY PARA PİYASASI KATILIM (TL) FONU', category: 'Katılım Fonu' },
+  'EPT': { name: 'EMAA BLUE PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'FFD': { name: 'FİBA PORTFÖY ÜÇÜNCÜ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'FI5': { name: 'QNB PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'FIL': { name: 'FİBA PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'FPI': { name: 'FONMAP PORTFÖY BİRİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'FSK': { name: 'QNB PORTFÖY İKİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'GAL': { name: 'GARANTİ PORTFÖY İKİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'GNP': { name: 'GARANTİ PORTFÖY NEMA PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'GO6': { name: 'ONE PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'GOP': { name: 'GOLDEN GLOBAL PORTFÖY PARA PİYASASI KATILIM FONU', category: 'Katılım Fonu' },
+  'GPN': { name: 'GARANTİ PORTFÖY PARA PİYASASI KATILIM (TL) FONU', category: 'Katılım Fonu' },
+  'GPZ': { name: 'GARANTİ PORTFÖY ÜÇÜNCÜ PARA PİYASASI FONU', category: 'Para Piyasası Fonu' },
+  'GSP': { name: 'Garanti Portföy S&P 500 Endeksi Hisse Senedi Fonu', category: 'Yabancı Hisse Fonu' },
+  'GTA': { name: 'Garanti Portföy Altın Fonu', category: 'Kıymetli Madenler Fonu' },
+  'GTL': { name: 'GARANTİ PORTFÖY BİRİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'GUE': { name: 'GARANTİ PORTFÖY ÖPY PARA PİYASASI (TL) ÖZEL FON', category: 'Para Piyasası Fonu' },
+  'HIP': { name: 'HSBC PORTFÖY İKİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'HLL': { name: 'ZİRAAT PORTFÖY HALKBANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'HOP': { name: 'HAS PORTFÖY ÖPY PARA PİYASASI (TL) ÖZEL FON', category: 'Para Piyasası Fonu' },
+  'HPP': { name: 'HEDEF PORTFÖY İKİNCİ PARA PİYASASI (TL) FON', category: 'Para Piyasası Fonu' },
+  'HSL': { name: 'HSBC PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'HVT': { name: 'ALLBATROSS PORTFÖY YÖNETİMİ A.Ş. BİRİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'HYV': { name: 'HEDEF PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'ICE': { name: 'TEB PORTFÖY ICBC TURKEY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'IDH': { name: 'İş Portföy BIST 100 Dışı Şirketler Hisse Senedi Fonu', category: 'Hisse Senedi Fonu' },
+  'IDL': { name: 'AKTİF PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'IGL': { name: 'TEB PORTFÖY ING BANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'IIH': { name: 'İstanbul Portföy Üçüncü Hisse Senedi Fonu', category: 'Hisse Senedi Fonu' },
+  'IJV': { name: 'İSTANBUL PORTFÖY BİRİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'IOO': { name: 'İŞ PORTFÖY İKİNCİ PARA PİYASASI (TL) FON', category: 'Para Piyasası Fonu' },
+  'IOP': { name: 'İŞ PORTFÖY ODEABANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'IPB': { name: 'İstanbul Portföy Birinci Değişken Fon', category: 'Değişken Fon' },
+  'IPL': { name: 'İSTANBUL PORTFÖY PARA PİYASASI FONU', category: '' },
+  'IRY': { name: 'INVEO PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'IUZ': { name: 'İŞ PORTFÖY ANADOLUBANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'KHP': { name: 'KUVEYT TÜRK PORTFÖY PAYLAŞIMLI HESAP PARA PİYASASI KATILIM FONU', category: 'Katılım Fonu' },
+  'KIE': { name: 'TRIVE PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'KPP': { name: 'KARE PORTFÖY PARA PİYASASI FONU', category: 'Para Piyasası Fonu' },
+  'KZL': { name: 'Kuveyt Türk Portföy Altın Katılım Fonu', category: 'Kıymetli Madenler Fonu' },
+  'LKT': { name: 'AKTİF PORTFÖY İKİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'MAC': { name: 'Marmara Capital Portföy Hisse Senedi Fonu', category: 'Hisse Senedi Fonu' },
+  'MPE': { name: 'MT PORTFÖY PARA PİYASASI KATILIM (TL) FONU', category: 'Katılım Fonu' },
+  'MPL': { name: 'MT PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'NMP': { name: 'AK PORTFÖY NEMA PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'NNF': { name: 'Hedef Portföy Birinci Hisse Senedi Fonu', category: 'Hisse Senedi Fonu' },
+  'NRC': { name: 'Neo Portföy Birinci Değişken Fon', category: 'Değişken Fon' },
+  'NRG': { name: 'NEO PORTFÖY BİRİNCİ PARA PİYASASI FONU', category: 'Para Piyasası Fonu' },
+  'NSP': { name: 'NUROL PORTFÖY PARA PİYASASI KATILIM FONU', category: 'Katılım Fonu' },
+  'NVB': { name: 'NEO PORTFÖY İKINCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'OPJ': { name: 'QNB PORTFÖY QNB PARA PİYASASI (TL) FON', category: 'Para Piyasası Fonu' },
+  'OSD': { name: 'Osmanlı Portföy Birinci Kısa Vadeli Borçlanma Araçları Fonu', category: 'Borçlanma Araçları Fonu' },
+  'OYL': { name: 'OYAK PORTFÖY BİRİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PAB': { name: 'A1 CAPİTAL PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PJL': { name: 'PHİLLİP PORTFÖY PARA PİYASASI FONU', category: 'Para Piyasası Fonu' },
+  'PKR': { name: 'ROTA PORTFÖY PARA PİYASASI KATILIM FONU', category: 'Katılım Fonu' },
+  'PLR': { name: 'OSMANLI PORTFÖY PARA PİYASASI FONU', category: 'Para Piyasası Fonu' },
+  'PNU': { name: 'PUSULA PORTFÖY İKİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PPG': { name: 'ALBARAKA PORTFÖY PARA PİYASASI KATILIM FONU', category: 'Katılım Fonu' },
+  'PPI': { name: 'YAPI KREDİ PORTFÖY ÜÇÜNCÜ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PPN': { name: 'NUROL PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PPP': { name: 'PERFORM PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PPT': { name: 'ATLAS PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PPZ': { name: 'AZİMUT PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PRD': { name: 'PİRAMİT PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PRH': { name: 'AURA PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PRR': { name: 'INVEO PORTFÖY PARA PİYASASI KATILIM (TL) FONU', category: 'Katılım Fonu' },
+  'PRY': { name: 'PUSULA PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PTL': { name: 'TEB PORTFÖY İKİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PTP': { name: 'AHLATCI PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'PYB': { name: 'TEB PORTFÖY ALTERNATİFBANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'RBP': { name: 'RE-PIE PORTFÖY BİRİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'RPP': { name: 'ROTA PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'RRP': { name: 'RE-PIE PORTFÖY PARA PİYASASI KATILIM (TL) FONU', category: 'Katılım Fonu' },
+  'SAP': { name: 'AK PORTFÖY ŞEKERBANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'SKL': { name: 'TEB PORTFÖY ŞEKERBANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'SLF': { name: 'ROTA PORTFÖY ŞEKERBANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'SPP': { name: 'SPARTA PORTFÖY BİRİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'SPU': { name: 'STRATEJİ PORTFÖY PARA PİYASASI FONU', category: 'Para Piyasası Fonu' },
+  'TAU': { name: 'İş Portföy BIST Banka Endeksi Fonu', category: 'Hisse Senedi Fonu' },
+  'TCB': { name: 'TACİRLER PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'TCD': { name: 'Tacirler Portföy Değişken Fon', category: 'Değişken Fon' },
+  'TI1': { name: 'İŞ PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'TI2': { name: 'İş Portföy İş\'te Kadın Hisse Senedi Fonu', category: 'Hisse Senedi Fonu' },
+  'TKM': { name: 'TEB PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'TLK': { name: 'AKTİF PORTFÖY PARA PİYASASI KATILIM (TL) FONU', category: 'Katılım Fonu' },
+  'TLV': { name: 'TERA PORTFÖY PARA PİYASASI KATILIM (TL) FONU', category: 'Katılım Fonu' },
+  'TP2': { name: 'TERA PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'TTE': { name: 'İş Portföy BIST Teknoloji Ağırlıklı Sınırlayıcı Fon', category: 'Hisse Senedi Fonu' },
+  'TZL': { name: 'ZİRAAT PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'UPP': { name: 'ÜNLÜ PORTFÖY PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'VK6': { name: 'V PORTFÖY VAKIFBANK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'YAY': { name: 'Yapı Kredi Portföy Yabancı Teknoloji Sektörü Fonu', category: 'Yabancı Hisse Fonu' },
+  'YLB': { name: 'YAPI KREDİ PORTFÖY PARA PİYASASI FONU', category: 'Para Piyasası Fonu' },
+  'YVD': { name: 'YAPI KREDİ PORTFÖY İKİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'ZA2': { name: 'KUVEYT TÜRK PORTFÖY İKİNCİ SEPET HESAP PARA PİYASASI KATILIM FONU', category: 'Katılım Fonu' },
+  'ZAY': { name: 'KUVEYT TÜRK PORTFÖY SEPET HESAP PARA PİYASASI KATILIM (TL) FONU', category: 'Katılım Fonu' },
+  'ZBJ': { name: 'ZİRAAT PORTFÖY BAŞAK PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'ZNG': { name: 'ZİRAAT PORTFÖY BİRİNCİ PARA PİYASASI (TL) FONU', category: 'Para Piyasası Fonu' },
+  'ZP6': { name: 'Ziraat Portföy Katılım Endeksi Hisse Senedi Fonu', category: 'Katılım Fonu' },
+};
+
+export function lookupTefasFund(code: string): { code: string; name: string; category?: string } | null {
+  const upper = code.trim().toUpperCase();
+  if (TEFAS_FUNDS_DICTIONARY[upper]) {
+    return {
+      code: upper,
+      name: TEFAS_FUNDS_DICTIONARY[upper].name,
+      category: TEFAS_FUNDS_DICTIONARY[upper].category
+    };
+  }
+  return null;
+}
+
+export function searchTefasFunds(query: string): Array<{ code: string; name: string; category?: string }> {
+  const q = query.trim().toUpperCase();
+  if (!q) return [];
+  const results: Array<{ code: string; name: string; category?: string }> = [];
+  for (const [code, item] of Object.entries(TEFAS_FUNDS_DICTIONARY)) {
+    if (code.includes(q) || item.name.toUpperCase().includes(q)) {
+      results.push({ code, name: item.name, category: item.category });
+    }
+  }
+  return results.slice(0, 15);
+}

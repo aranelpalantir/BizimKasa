@@ -164,7 +164,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         symbol: fundSymbol,
         unit: 'pay',
         isPhysical: false,
-        samplePrice: lookedUp?.estimatedPrice || 15.42,
+        samplePrice: 10,
         sampleQty: 1000
       };
     }
@@ -179,7 +179,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         symbol: upper,
         unit: 'pay',
         isPhysical: false,
-        samplePrice: lookedUp?.estimatedPrice || 15.42,
+        samplePrice: 10,
         sampleQty: 1000
       };
     }
@@ -599,9 +599,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 symbol: row.symbol,
                 name: row.assetName,
                 category: 'FUND',
-                rateTRY: row.price > 0 ? row.price : 10,
-                changeDailyPct: 0.5,
-                source: 'TEFAS İçe Aktarım',
+                rateTRY: row.price > 0 ? row.price : 0,
+                changeDailyPct: 0,
+                source: row.price > 0 ? 'Alış Fiyatı' : 'Fiyat Girilmedi',
                 dataDate: row.date,
                 updatedAt: new Date().toISOString(),
                 isManualOverride: false

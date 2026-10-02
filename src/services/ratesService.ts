@@ -1,29 +1,10 @@
 import { db } from '../db/db';
 import type { MarketRate } from '../types/finance';
 
-// TEFAS Popüler Fon Listesi & Sözlüğü
-export const TEFAS_FUNDS_DICTIONARY: Record<string, { name: string; estimatedPrice: number }> = {
-  'TI2': { name: "İş Portföy İş'te Kadın Hisse Senedi Fonu", estimatedPrice: 15.42 },
-  'MAC': { name: 'Marmara Capital Portföy Hisse Senedi Fonu', estimatedPrice: 38.65 },
-  'TTE': { name: 'İş Portföy BIST Teknoloji Ağırlıklı Sınırlayıcı Fon', estimatedPrice: 12.85 },
-  'GSP': { name: 'Garanti Portföy S&P 500 Endeksi Hisse Senedi Fonu', estimatedPrice: 29.40 },
-  'DVT': { name: 'Deniz Portföy Dijital Teknolojiler Değişken Fon', estimatedPrice: 9.9165 },
-  'AFT': { name: 'Ak Portföy Yeni Teknolojiler Yabancı Hisse Senedi Fonu', estimatedPrice: 28.50 },
-  'YAY': { name: 'Yapı Kredi Portföy Yabancı Teknoloji Sektörü Fonu', estimatedPrice: 42.10 },
-  'NNF': { name: 'Hedef Portföy Birinci Hisse Senedi Fonu', estimatedPrice: 14.80 },
-  'IIH': { name: 'İstanbul Portföy Üçüncü Hisse Senedi Fonu', estimatedPrice: 22.35 },
-  'BIO': { name: 'İş Portföy Yenilenebilir Enerji Karma Fon', estimatedPrice: 7.60 },
-  'IPB': { name: 'İstanbul Portföy Birinci Değişken Fon', estimatedPrice: 18.90 },
-  'OSD': { name: 'Osmanlı Portföy Birinci Kısa Vadeli Borçlanma Araçları Fonu', estimatedPrice: 5.12 },
-  'IDH': { name: 'İş Portföy BIST 100 Dışı Şirketler Hisse Senedi Fonu', estimatedPrice: 19.85 },
-  'ZP6': { name: 'Ziraat Portföy Katılım Endeksi Hisse Senedi Fonu', estimatedPrice: 11.20 },
-  'TAU': { name: 'İş Portföy BIST Banka Endeksi Fonu', estimatedPrice: 34.70 },
-  'TCD': { name: 'Tacirler Portföy Değişken Fon', estimatedPrice: 26.40 },
-  'BUY': { name: 'Bülbülzade Portföy Birinci Değişken Fon', estimatedPrice: 8.95 },
-  'NRC': { name: 'Neo Portföy Birinci Değişken Fon', estimatedPrice: 16.30 },
-  'GTA': { name: 'Garanti Portföy Altın Fonu', estimatedPrice: 0.89 },
-  'KZL': { name: 'Kuveyt Türk Portföy Altın Katılım Fonu', estimatedPrice: 0.94 },
-};
+import { TEFAS_FUNDS_DICTIONARY, lookupTefasFund, searchTefasFunds } from '../constants/tefasFunds';
+
+// TEFAS Fon Listesi & Sözlüğü (Fiyatlar kod içinde sabit tutulmaz, kullanıcı veya maliyet bazlıdır)
+export { TEFAS_FUNDS_DICTIONARY, lookupTefasFund, searchTefasFunds };
 
 export const DEFAULT_LIVE_RATES: Record<string, { rate: number; source: string; name: string; category: MarketRate['category'] }> = {
   'USD': { rate: 49.03, source: 'Piyasa Kuru', name: 'Amerikan Doları', category: 'CURRENCY' },
@@ -38,30 +19,6 @@ export const DEFAULT_LIVE_RATES: Record<string, { rate: number; source: string; 
   'XU100': { rate: 12249.04, source: 'Borsa İstanbul', name: 'BIST 100', category: 'STOCK_INDEX' },
   'NASDAQ100': { rate: 30366.11, source: 'Global', name: 'Nasdaq 100', category: 'STOCK_INDEX' },
 };
-
-export function lookupTefasFund(code: string): { code: string; name: string; estimatedPrice: number } | null {
-  const upper = code.trim().toUpperCase();
-  if (TEFAS_FUNDS_DICTIONARY[upper]) {
-    return {
-      code: upper,
-      name: TEFAS_FUNDS_DICTIONARY[upper].name,
-      estimatedPrice: TEFAS_FUNDS_DICTIONARY[upper].estimatedPrice
-    };
-  }
-  return null;
-}
-
-export function searchTefasFunds(query: string): Array<{ code: string; name: string }> {
-  const q = query.trim().toUpperCase();
-  if (!q) return [];
-  const results: Array<{ code: string; name: string }> = [];
-  for (const [code, item] of Object.entries(TEFAS_FUNDS_DICTIONARY)) {
-    if (code.includes(q) || item.name.toUpperCase().includes(q)) {
-      results.push({ code, name: item.name });
-    }
-  }
-  return results.slice(0, 8);
-}
 
 // Clean up deprecated rates (GBP, XAG) from db
 export async function cleanupDeprecatedRates(): Promise<void> {
@@ -165,18 +122,30 @@ export async function cleanupDuplicateAssetAccounts(): Promise<number> {
     const fundRates = await db.marketRates.where('category').equals('FUND').toArray();
     for (const fr of fundRates) {
       const tefas = lookupTefasFund(fr.symbol);
-      if (tefas) {
-        const updates: Partial<MarketRate> = {};
-        if (fr.name !== tefas.name) {
-          updates.name = tefas.name;
+      const updates: Partial<MarketRate> = {};
+      if (tefas && fr.name !== tefas.name) {
+        updates.name = tefas.name;
+      }
+      // If fund had old hardcoded fake price (source === 'TEFAS' without manual override, or DVT > 20)
+      if ((fr.source === 'TEFAS' && !fr.isManualOverride) || (fr.symbol === 'DVT' && (fr.rateTRY === 21.15 || fr.rateTRY > 20))) {
+        const matchingAccs = remainingFundAccounts.filter(a => a.symbol?.toUpperCase() === fr.symbol.toUpperCase());
+        const txs = await db.transactions
+          .where('accountId')
+          .anyOf(matchingAccs.map(a => a.id))
+          .toArray();
+        const buyTxs = txs.filter(t => t.type === 'BUY' && t.unitPriceTRY && t.unitPriceTRY > 0);
+        const lastBuy = buyTxs.length > 0 ? buyTxs[buyTxs.length - 1] : null;
+
+        if (lastBuy && lastBuy.unitPriceTRY) {
+          updates.rateTRY = lastBuy.unitPriceTRY;
+          updates.source = 'Alış Fiyatı';
+        } else {
+          updates.rateTRY = 0;
+          updates.source = 'Fiyat Girilmedi';
         }
-        if (fr.symbol === 'DVT' && (fr.rateTRY === 21.15 || fr.rateTRY > 20)) {
-          updates.rateTRY = tefas.estimatedPrice;
-          updates.source = 'TEFAS';
-        }
-        if (Object.keys(updates).length > 0) {
-          await db.marketRates.update(fr.symbol, updates);
-        }
+      }
+      if (Object.keys(updates).length > 0) {
+        await db.marketRates.update(fr.symbol, updates);
       }
     }
 
@@ -274,7 +243,7 @@ export async function syncTefasFundRatesWithAssets(): Promise<{ activeSymbols: s
       const data = fundBalances.get(symbol);
 
       if (!existing) {
-        const rateTRY = data?.lastPrice || fundInfo?.estimatedPrice || 10;
+        const rateTRY = (data?.lastPrice && data.lastPrice > 0) ? data.lastPrice : 0;
         const name = fundInfo?.name || data?.name || `${symbol} Fonu`;
 
         await db.marketRates.put({
@@ -282,8 +251,8 @@ export async function syncTefasFundRatesWithAssets(): Promise<{ activeSymbols: s
           name,
           category: 'FUND',
           rateTRY,
-          changeDailyPct: 0.5,
-          source: 'TEFAS',
+          changeDailyPct: 0,
+          source: rateTRY > 0 ? 'Alış Fiyatı' : 'Fiyat Girilmedi',
           dataDate: todayStr,
           updatedAt: nowISO,
           isManualOverride: false
@@ -310,10 +279,6 @@ export const BASELINE_MARKET_RATES: Record<string, { baseRate: number; defaultCh
   'XAU_ONS': { baseRate: 4155.37, defaultChangePct: 0.45 },
   'XU100': { baseRate: 12103.80, defaultChangePct: 1.20 },
   'NASDAQ100': { baseRate: 30170.00, defaultChangePct: 0.65 },
-  'TI2': { baseRate: 15.24, defaultChangePct: 1.15 },
-  'MAC': { baseRate: 37.95, defaultChangePct: 1.85 },
-  'AFT': { baseRate: 28.23, defaultChangePct: 0.95 },
-  'DVT': { baseRate: 9.9165, defaultChangePct: 0.85 },
 };
 
 // Multi-Source Live Rates Fetcher
@@ -470,19 +435,26 @@ export async function resetManualRate(symbol: string): Promise<void> {
   const todayStr = new Date().toISOString().split('T')[0];
   const nowISO = new Date().toISOString();
 
-  // If this is a TEFAS fund, restore from TEFAS reference dictionary or baseline
+  // If this is a TEFAS fund, restore to user's purchase price or 0
   if (existing.category === 'FUND') {
-    const tefas = lookupTefasFund(symbol);
-    const base = BASELINE_MARKET_RATES[symbol];
-    const resetPrice = tefas?.estimatedPrice || base?.baseRate || existing.rateTRY;
-    const defaultPct = base?.defaultChangePct || 0.85;
+    const accs = await db.accounts.where('type').equals('ASSET').toArray();
+    const fundAccIds = accs.filter(a => a.symbol === symbol).map(a => a.id);
+    let fallbackPrice = 0;
+    if (fundAccIds.length > 0) {
+      const txs = await db.transactions.toArray();
+      const relevantTxs = txs.filter(t => fundAccIds.includes(t.accountId) && t.unitPriceTRY && t.unitPriceTRY > 0);
+      relevantTxs.sort((a, b) => b.date.localeCompare(a.date));
+      if (relevantTxs.length > 0) {
+        fallbackPrice = relevantTxs[0].unitPriceTRY;
+      }
+    }
 
     await db.marketRates.update(symbol, {
-      rateTRY: resetPrice,
-      changeDailyPct: defaultPct,
+      rateTRY: fallbackPrice,
+      changeDailyPct: 0,
       isManualOverride: false,
       manualRate: undefined,
-      source: 'TEFAS',
+      source: fallbackPrice > 0 ? 'Maliyet Kuru' : 'Fiyat Girilmedi',
       dataDate: todayStr,
       updatedAt: nowISO
     });

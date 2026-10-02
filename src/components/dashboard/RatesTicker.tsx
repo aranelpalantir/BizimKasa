@@ -40,6 +40,9 @@ export const DEFAULT_RATES_ORDER: string[] = [
 ];
 
 export function formatRateDisplay(symbol: string, rate: number): string {
+  if (rate <= 0) {
+    return 'Fiyat Girin';
+  }
   if (symbol === 'XAU_ONS') {
     return `$${formatNumber(rate, 2)}`;
   }
@@ -131,7 +134,7 @@ export const RatesTicker: React.FC<RatesTickerProps> = ({ rates }) => {
 
   const handleOpenModal = (rate: MarketRate) => {
     setSelectedRate(rate);
-    setOverrideValue(formatForInput(rate.rateTRY));
+    setOverrideValue(rate.rateTRY > 0 ? formatForInput(rate.rateTRY) : '');
   };
 
   const handleSaveOverride = async () => {
@@ -161,7 +164,7 @@ export const RatesTicker: React.FC<RatesTickerProps> = ({ rates }) => {
       const updated = await db.marketRates.get(selectedRate.symbol);
       if (updated) {
         setSelectedRate(updated);
-        setOverrideValue(formatForInput(updated.rateTRY));
+        setOverrideValue(updated.rateTRY > 0 ? formatForInput(updated.rateTRY) : '');
       } else {
         setSelectedRate(null);
       }
@@ -278,20 +281,26 @@ export const RatesTicker: React.FC<RatesTickerProps> = ({ rates }) => {
                 </div>
 
                 <div className="flex flex-col items-end pl-2 border-l border-white/5">
-                  <span className="text-xs font-semibold text-slate-200 font-mono whitespace-nowrap">
+                  <span className={`text-xs font-semibold font-mono whitespace-nowrap ${
+                    rate.rateTRY <= 0 ? 'text-amber-400' : 'text-slate-200'
+                  }`}>
                     {formatRateDisplay(rate.symbol, rate.rateTRY)}
                   </span>
                   <div className={`flex items-center text-[10px] font-medium font-mono ${
-                    rate.changeDailyPct > 0 
+                    rate.rateTRY <= 0
+                      ? 'text-slate-500'
+                      : rate.changeDailyPct > 0 
                       ? 'text-emerald-400' 
                       : rate.changeDailyPct < 0 
                       ? 'text-rose-400' 
                       : 'text-slate-400'
                   }`}>
-                    {rate.changeDailyPct > 0 && <TrendingUp className="w-2.5 h-2.5 mr-0.5" />}
-                    {rate.changeDailyPct < 0 && <TrendingDown className="w-2.5 h-2.5 mr-0.5" />}
+                    {rate.rateTRY > 0 && rate.changeDailyPct > 0 && <TrendingUp className="w-2.5 h-2.5 mr-0.5" />}
+                    {rate.rateTRY > 0 && rate.changeDailyPct < 0 && <TrendingDown className="w-2.5 h-2.5 mr-0.5" />}
                     <span>
-                      {rate.changeDailyPct > 0 ? '+' : rate.changeDailyPct < 0 ? '-' : ''}%{formatNumber(Math.abs(rate.changeDailyPct), 2)}
+                      {rate.rateTRY <= 0 
+                        ? 'Girilmedi' 
+                        : `${rate.changeDailyPct > 0 ? '+' : rate.changeDailyPct < 0 ? '-' : ''}%${formatNumber(Math.abs(rate.changeDailyPct), 2)}`}
                     </span>
                   </div>
                 </div>
@@ -340,11 +349,13 @@ export const RatesTicker: React.FC<RatesTickerProps> = ({ rates }) => {
                 type="text"
                 value={overrideValue}
                 onChange={(e) => setOverrideValue(e.target.value)}
-                placeholder="Örn: 55.24"
+                placeholder={selectedRate.category === 'FUND' ? "Örn: 9,9165" : "Örn: 55.24"}
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-white font-mono font-bold text-base focus:outline-none focus:border-amber-400 transition-colors"
               />
               <p className="text-[11px] text-slate-500 mt-1">
-                Kapalıçarşı veya banka makasını yansıtmak için elle özel değer belirleyebilirsiniz.
+                {selectedRate.category === 'FUND'
+                  ? 'TEFAS fonunun güncel birim pay fiyatını buradan girebilirsiniz.'
+                  : 'Kapalıçarşı veya banka makasını yansıtmak için elle özel değer belirleyebilirsiniz.'}
               </p>
             </div>
 
@@ -355,10 +366,16 @@ export const RatesTicker: React.FC<RatesTickerProps> = ({ rates }) => {
                   onClick={handleResetToLive}
                   disabled={isResetting}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors disabled:opacity-50"
-                  title="Manuel değeri silip piyasa canlı kuruna geri dön"
+                  title={selectedRate.category === 'FUND' ? 'Alış maliyetine sıfırla' : 'Manuel değeri silip piyasa canlı kuruna geri dön'}
                 >
                   <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-                  <span>{isResetting ? 'Canlı Kura Dönülüyor...' : 'Canlı Kura Sıfırla'}</span>
+                  <span>
+                    {isResetting 
+                      ? 'Sıfırlanıyor...' 
+                      : selectedRate.category === 'FUND' 
+                      ? 'Maliyet Kuruna Sıfırla' 
+                      : 'Canlı Kura Sıfırla'}
+                  </span>
                 </button>
               )}
               <button
