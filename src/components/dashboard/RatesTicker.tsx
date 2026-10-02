@@ -13,6 +13,7 @@ import {
   RotateCcw as ResetIcon
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { db } from '../../db/db';
 import { 
   saveOrUpdateRate, 
   resetManualRate 
@@ -157,7 +158,13 @@ export const RatesTicker: React.FC<RatesTickerProps> = ({ rates }) => {
     setIsResetting(true);
     try {
       await resetManualRate(selectedRate.symbol);
-      setSelectedRate(null);
+      const updated = await db.marketRates.get(selectedRate.symbol);
+      if (updated) {
+        setSelectedRate(updated);
+        setOverrideValue(formatForInput(updated.rateTRY));
+      } else {
+        setSelectedRate(null);
+      }
     } catch (err) {
       console.error('Reset to live failed:', err);
     } finally {
@@ -317,7 +324,7 @@ export const RatesTicker: React.FC<RatesTickerProps> = ({ rates }) => {
                   {new Date(selectedRate.updatedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
-              {selectedRate.isManualOverride && (
+              {(selectedRate.isManualOverride || selectedRate.source === 'Manuel Giriş') && (
                 <div className="flex justify-between pt-1 border-t border-white/5 text-amber-400 font-semibold text-[11px]">
                   <span>Durum:</span>
                   <span>Özel Manuel Fiyat Tanımlı</span>
@@ -342,7 +349,7 @@ export const RatesTicker: React.FC<RatesTickerProps> = ({ rates }) => {
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/5">
-              {selectedRate.isManualOverride && (
+              {(selectedRate.isManualOverride || selectedRate.source === 'Manuel Giriş') && (
                 <button
                   type="button"
                   onClick={handleResetToLive}

@@ -7,7 +7,7 @@ export const TEFAS_FUNDS_DICTIONARY: Record<string, { name: string; estimatedPri
   'MAC': { name: 'Marmara Capital Portföy Hisse Senedi Fonu', estimatedPrice: 38.65 },
   'TTE': { name: 'İş Portföy BIST Teknoloji Ağırlıklı Sınırlayıcı Fon', estimatedPrice: 12.85 },
   'GSP': { name: 'Garanti Portföy S&P 500 Endeksi Hisse Senedi Fonu', estimatedPrice: 29.40 },
-  'DVT': { name: 'Deniz Portföy Dijital Teknolojiler Değişken Fon', estimatedPrice: 21.15 },
+  'DVT': { name: 'Deniz Portföy Dijital Teknolojiler Değişken Fon', estimatedPrice: 9.9165 },
   'AFT': { name: 'Ak Portföy Yeni Teknolojiler Yabancı Hisse Senedi Fonu', estimatedPrice: 28.50 },
   'YAY': { name: 'Yapı Kredi Portföy Yabancı Teknoloji Sektörü Fonu', estimatedPrice: 42.10 },
   'NNF': { name: 'Hedef Portföy Birinci Hisse Senedi Fonu', estimatedPrice: 14.80 },
@@ -165,8 +165,18 @@ export async function cleanupDuplicateAssetAccounts(): Promise<number> {
     const fundRates = await db.marketRates.where('category').equals('FUND').toArray();
     for (const fr of fundRates) {
       const tefas = lookupTefasFund(fr.symbol);
-      if (tefas && fr.name !== tefas.name) {
-        await db.marketRates.update(fr.symbol, { name: tefas.name });
+      if (tefas) {
+        const updates: Partial<MarketRate> = {};
+        if (fr.name !== tefas.name) {
+          updates.name = tefas.name;
+        }
+        if (fr.symbol === 'DVT' && (fr.rateTRY === 21.15 || fr.rateTRY > 20)) {
+          updates.rateTRY = tefas.estimatedPrice;
+          updates.source = 'TEFAS';
+        }
+        if (Object.keys(updates).length > 0) {
+          await db.marketRates.update(fr.symbol, updates);
+        }
       }
     }
 
@@ -303,6 +313,7 @@ export const BASELINE_MARKET_RATES: Record<string, { baseRate: number; defaultCh
   'TI2': { baseRate: 15.24, defaultChangePct: 1.15 },
   'MAC': { baseRate: 37.95, defaultChangePct: 1.85 },
   'AFT': { baseRate: 28.23, defaultChangePct: 0.95 },
+  'DVT': { baseRate: 9.9165, defaultChangePct: 0.85 },
 };
 
 // Multi-Source Live Rates Fetcher
@@ -456,26 +467,49 @@ export async function resetManualRate(symbol: string): Promise<void> {
   const existing = await db.marketRates.get(symbol);
   if (!existing) return;
 
-  // 1. Clear manual override flags
+  const todayStr = new Date().toISOString().split('T')[0];
+  const nowISO = new Date().toISOString();
+
+  // If this is a TEFAS fund, restore from TEFAS reference dictionary or baseline
+  if (existing.category === 'FUND') {
+    const tefas = lookupTefasFund(symbol);
+    const base = BASELINE_MARKET_RATES[symbol];
+    const resetPrice = tefas?.estimatedPrice || base?.baseRate || existing.rateTRY;
+    const defaultPct = base?.defaultChangePct || 0.85;
+
+    await db.marketRates.update(symbol, {
+      rateTRY: resetPrice,
+      changeDailyPct: defaultPct,
+      isManualOverride: false,
+      manualRate: undefined,
+      source: 'TEFAS',
+      dataDate: todayStr,
+      updatedAt: nowISO
+    });
+    return;
+  }
+
+  // 1. Clear manual override flags and reset source
+  const fallback = DEFAULT_LIVE_RATES[symbol];
   await db.marketRates.update(symbol, {
     isManualOverride: false,
     manualRate: undefined,
-    updatedAt: new Date().toISOString()
+    source: fallback?.source || 'Piyasa API',
+    updatedAt: nowISO
   });
 
   // 2. Fetch fresh live rates to immediately overwrite rateTRY with real market value
   const res = await fetchLiveRatesMultiSource();
   if (!res.success) {
     // If network fails, restore from default live baseline
-    const fallback = DEFAULT_LIVE_RATES[symbol];
     const base = BASELINE_MARKET_RATES[symbol];
     if (fallback) {
       await db.marketRates.update(symbol, {
         rateTRY: fallback.rate,
         changeDailyPct: base?.defaultChangePct || 0.2,
         source: fallback.source,
-        dataDate: new Date().toISOString().split('T')[0],
-        updatedAt: new Date().toISOString(),
+        dataDate: todayStr,
+        updatedAt: nowISO,
         isManualOverride: false,
         manualRate: undefined
       });
