@@ -244,7 +244,6 @@ export async function clearAllDatabaseData(): Promise<void> {
     db.cashFlowEntries,
     db.transactions,
     db.investmentPlans,
-    db.rateHistory,
     db.marketRates,
     db.settings
   ], async () => {
@@ -253,7 +252,6 @@ export async function clearAllDatabaseData(): Promise<void> {
     await db.cashFlowEntries.clear();
     await db.transactions.clear();
     await db.investmentPlans.clear();
-    await db.rateHistory.clear();
     await db.marketRates.where('category').equals('FUND').delete();
 
     const pinHash = await db.settings.get('pinHash');

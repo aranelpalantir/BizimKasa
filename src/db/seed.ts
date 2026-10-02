@@ -5,7 +5,6 @@ import type {
   CashFlowEntry, 
   AssetTransaction, 
   MarketRate, 
-  MarketRateHistoryRecord,
   AppSettings 
 } from '../types/finance';
 
@@ -40,7 +39,6 @@ export async function forceResetWithDummyData(): Promise<void> {
     db.cashFlowEntries,
     db.transactions,
     db.marketRates,
-    db.rateHistory,
     db.investmentPlans,
     db.settings
   ], async () => {
@@ -49,7 +47,6 @@ export async function forceResetWithDummyData(): Promise<void> {
     await db.cashFlowEntries.clear();
     await db.transactions.clear();
     await db.marketRates.clear();
-    await db.rateHistory.clear();
     await db.investmentPlans.clear();
     await db.settings.clear();
   });
@@ -209,31 +206,7 @@ async function seedDummyData(): Promise<void> {
   // 5. Market Rates
   await db.marketRates.bulkAdd(INITIAL_RATES);
 
-  // 6. Son 10 Günün Kur Tarihçesi (22 Eylül - 1 Ekim 2026)
-  const historyRecords: MarketRateHistoryRecord[] = [];
-  const baseSymbols = INITIAL_RATES.map(r => r.symbol);
-
-  for (let i = 9; i >= 0; i--) {
-    const d = new Date(2026, 9, 1 - i); // 2026-10-01 minus i days
-    const dateStr = d.toISOString().split('T')[0];
-    const dayFactor = 1 - (i * 0.0035); // slight historical trend
-
-    for (const sym of baseSymbols) {
-      const live = INITIAL_RATES.find(r => r.symbol === sym)?.rateTRY || 100;
-      const histRate = Math.round((live * dayFactor) * 100) / 100;
-      historyRecords.push({
-        id: `${sym}_${dateStr}`,
-        symbol: sym,
-        date: dateStr,
-        rateTRY: histRate,
-        source: 'Piyasa API',
-        isManual: false
-      });
-    }
-  }
-  await db.rateHistory.bulkAdd(historyRecords);
-
-  // 7. Default Settings
+  // 6. Default Settings
   const defaultSettings: AppSettings = {
     biometricsEnabled: false,
     autoLockMinutes: 5,

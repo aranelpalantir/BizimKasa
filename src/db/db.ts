@@ -5,7 +5,6 @@ import type {
   CashFlowEntry, 
   AssetTransaction, 
   MarketRate, 
-  MarketRateHistoryRecord,
   MonthlyInvestmentPlan 
 } from '../types/finance';
 
@@ -20,7 +19,6 @@ export class BizimKasaDatabase extends Dexie {
   cashFlowEntries!: Table<CashFlowEntry, string>;
   transactions!: Table<AssetTransaction, string>;
   marketRates!: Table<MarketRate, string>;
-  rateHistory!: Table<MarketRateHistoryRecord, string>;
   investmentPlans!: Table<MonthlyInvestmentPlan, string>;
   settings!: Table<SettingRecord, string>;
 
@@ -36,6 +34,10 @@ export class BizimKasaDatabase extends Dexie {
       rateHistory: 'id, symbol, date, [symbol+date]',
       investmentPlans: 'id, [year+month], year, month',
       settings: 'key'
+    });
+
+    this.version(3).stores({
+      rateHistory: null
     });
   }
 }

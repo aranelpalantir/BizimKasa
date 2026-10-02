@@ -318,7 +318,8 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
       setIsCreatingNewFund(false);
       const sym = groupFunds[0].symbol || groupFunds[0].name;
       const rate = rateMap.get(sym);
-      if (rate) setUnitPrice(rate.toString());
+      if (rate && rate > 0) setUnitPrice(rate.toString());
+      else setUnitPrice('');
     } else {
       setIsCreatingNewFund(true);
       setSelectedAccountId('');
@@ -1189,7 +1190,8 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                   if (gFunds.length > 0) {
                     setSelectedAccountId(gFunds[0].id);
                     const rate = rateMap.get(gFunds[0].symbol || gFunds[0].name);
-                    if (rate) setUnitPrice(rate.toString());
+                    if (rate && rate > 0) setUnitPrice(rate.toString());
+                    else setUnitPrice('');
                   } else {
                     setSelectedAccountId('');
                     setIsCreatingNewFund(true);
@@ -1228,7 +1230,8 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                     if (acc) {
                       const sym = acc.symbol || acc.name;
                       const rate = rateMap.get(sym);
-                      if (rate) setUnitPrice(rate.toString());
+                      if (rate && rate > 0) setUnitPrice(rate.toString());
+                      else setUnitPrice('');
                     }
                   }}
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
@@ -1304,7 +1307,8 @@ export const FundsTracker: React.FC<FundsTrackerProps> = ({
                   const accId = e.target.value;
                   setSelectedAccountId(accId);
                   const fItem = fundData.find(f => f.account.id === accId);
-                  if (fItem) setUnitPrice(fItem.currentRate.toString());
+                  if (fItem && fItem.currentRate > 0) setUnitPrice(fItem.currentRate.toString());
+                  else setUnitPrice('');
                 }}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none"
               >

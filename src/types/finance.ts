@@ -85,16 +85,6 @@ export interface MarketRate {
   manualRate?: number;
 }
 
-// Son 10 günün (veya daha fazlasının) kur tarihçesi
-export interface MarketRateHistoryRecord {
-  id: string;             // `${symbol}_${date}`
-  symbol: string;
-  date: string;           // YYYY-MM-DD
-  rateTRY: number;
-  source: string;
-  isManual: boolean;
-}
-
 export interface InvestmentAllocation {
   accountId: string;
   targetAmountTRY: number;

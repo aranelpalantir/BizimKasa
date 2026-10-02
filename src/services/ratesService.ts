@@ -126,22 +126,13 @@ export async function cleanupDuplicateAssetAccounts(): Promise<number> {
       if (tefas && fr.name !== tefas.name) {
         updates.name = tefas.name;
       }
-      // If fund had old hardcoded fake price (source === 'TEFAS' without manual override, or DVT > 20)
-      if ((fr.source === 'TEFAS' && !fr.isManualOverride) || (fr.symbol === 'DVT' && (fr.rateTRY === 21.15 || fr.rateTRY > 20))) {
-        const matchingAccs = remainingFundAccounts.filter(a => a.symbol?.toUpperCase() === fr.symbol.toUpperCase());
-        const txs = await db.transactions
-          .where('accountId')
-          .anyOf(matchingAccs.map(a => a.id))
-          .toArray();
-        const buyTxs = txs.filter(t => t.type === 'BUY' && t.unitPriceTRY && t.unitPriceTRY > 0);
-        const lastBuy = buyTxs.length > 0 ? buyTxs[buyTxs.length - 1] : null;
-
-        if (lastBuy && lastBuy.unitPriceTRY) {
-          updates.rateTRY = lastBuy.unitPriceTRY;
-          updates.source = 'Alış Fiyatı';
-        } else {
+      // If fund rate was not manually entered by the user, or has auto-populated purchase price / old fake price,
+      // reset it to 0 ('Fiyat Girilmedi') so price input remains completely blank for user entry.
+      if (!fr.isManualOverride || fr.source === 'Alış Fiyatı' || fr.source === 'Maliyet Kuru' || fr.source === 'TEFAS' || fr.rateTRY === 2.4962 || fr.rateTRY === 21.15) {
+        if (fr.source !== 'Manuel Giriş' || fr.rateTRY === 2.4962 || fr.rateTRY === 21.15) {
           updates.rateTRY = 0;
           updates.source = 'Fiyat Girilmedi';
+          updates.isManualOverride = false;
         }
       }
       if (Object.keys(updates).length > 0) {
@@ -243,20 +234,30 @@ export async function syncTefasFundRatesWithAssets(): Promise<{ activeSymbols: s
       const data = fundBalances.get(symbol);
 
       if (!existing) {
-        const rateTRY = (data?.lastPrice && data.lastPrice > 0) ? data.lastPrice : 0;
         const name = fundInfo?.name || data?.name || `${symbol} Fonu`;
 
         await db.marketRates.put({
           symbol,
           name,
           category: 'FUND',
-          rateTRY,
+          rateTRY: 0,
           changeDailyPct: 0,
-          source: rateTRY > 0 ? 'Alış Fiyatı' : 'Fiyat Girilmedi',
+          source: 'Fiyat Girilmedi',
           dataDate: todayStr,
           updatedAt: nowISO,
           isManualOverride: false
         });
+      } else if (!existing.isManualOverride || existing.source === 'Alış Fiyatı' || existing.source === 'Maliyet Kuru' || existing.rateTRY === 2.4962) {
+        if (existing.source !== 'Manuel Giriş' || existing.rateTRY === 2.4962) {
+          await db.marketRates.update(symbol, {
+            rateTRY: 0,
+            changeDailyPct: 0,
+            source: 'Fiyat Girilmedi',
+            dataDate: todayStr,
+            updatedAt: nowISO,
+            isManualOverride: false
+          });
+        }
       }
     }
 
@@ -435,26 +436,14 @@ export async function resetManualRate(symbol: string): Promise<void> {
   const todayStr = new Date().toISOString().split('T')[0];
   const nowISO = new Date().toISOString();
 
-  // If this is a TEFAS fund, restore to user's purchase price or 0
+  // If this is a TEFAS fund, restore to 0 (Fiyat Girilmedi)
   if (existing.category === 'FUND') {
-    const accs = await db.accounts.where('type').equals('ASSET').toArray();
-    const fundAccIds = accs.filter(a => a.symbol === symbol).map(a => a.id);
-    let fallbackPrice = 0;
-    if (fundAccIds.length > 0) {
-      const txs = await db.transactions.toArray();
-      const relevantTxs = txs.filter(t => fundAccIds.includes(t.accountId) && t.unitPriceTRY && t.unitPriceTRY > 0);
-      relevantTxs.sort((a, b) => b.date.localeCompare(a.date));
-      if (relevantTxs.length > 0) {
-        fallbackPrice = relevantTxs[0].unitPriceTRY;
-      }
-    }
-
     await db.marketRates.update(symbol, {
-      rateTRY: fallbackPrice,
+      rateTRY: 0,
       changeDailyPct: 0,
       isManualOverride: false,
       manualRate: undefined,
-      source: fallbackPrice > 0 ? 'Maliyet Kuru' : 'Fiyat Girilmedi',
+      source: 'Fiyat Girilmedi',
       dataDate: todayStr,
       updatedAt: nowISO
     });
