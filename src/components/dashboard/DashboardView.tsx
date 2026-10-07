@@ -7,7 +7,8 @@ import { GroupFilterBar } from '../common/GroupFilterBar';
 import { AddAccountModal } from '../common/AddAccountModal';
 import { EditAccountModal } from '../common/EditAccountModal';
 import { calculatePortfolioSummary, formatTRY, formatNumber } from '../../services/portfolioService';
-import { ArrowRight, Coins, Euro, LineChart, Users, Plus, Wallet, Palette } from 'lucide-react';
+import { ArrowRight, Coins, Euro, LineChart, Users, Plus, Wallet, Palette, Clock } from 'lucide-react';
+import { formatLastModified, formatFullDateTime } from '../../utils/dateUtils';
 import type { Account, AssetTransaction, MarketRate, CashFlowEntry, Group } from '../../types/finance';
 
 interface DashboardViewProps {
@@ -18,6 +19,7 @@ interface DashboardViewProps {
   cashFlowEntries: CashFlowEntry[];
   hideValues: boolean;
   onNavigateTab: (tab: 'budget' | 'assets' | 'plan') => void;
+  lastModifiedAt?: string;
 }
 
 const MONTH_NAMES = [
@@ -32,7 +34,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   rates,
   cashFlowEntries,
   hideValues,
-  onNavigateTab
+  onNavigateTab,
+  lastModifiedAt
 }) => {
   const currentYear = 2026;
   const currentMonth = new Date().getMonth() + 1; // 1-12
@@ -74,6 +77,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-5">
       {/* Live Market Rates Horizontal Ticker with Groups & 10-day history */}
       <RatesTicker rates={rates} />
+
+      {/* Local System Status & Last Modified Bar */}
+      {lastModifiedAt && (
+        <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-slate-900/60 border border-white/5 text-xs text-slate-400 shadow-sm select-none">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-slate-300 font-medium">Yerel Veri Durumu</span>
+          </div>
+          <div 
+            title={`Sistemdeki Son Veri Değişikliği: ${formatFullDateTime(lastModifiedAt)}`}
+            className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-default"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="text-slate-400">Son Değişiklik:</span>
+            <span className="font-semibold text-amber-300">{formatLastModified(lastModifiedAt)}</span>
+          </div>
+        </div>
+      )}
 
       {/* Onboarding Empty Banner when no accounts exist */}
       {groups.length === 0 && (

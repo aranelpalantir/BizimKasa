@@ -40,6 +40,7 @@ import {
   clearAllDatabaseData 
 } from '../../services/exportService';
 import type { AppSettings, Group } from '../../types/finance';
+import { formatLastModified, formatFullDateTime, compareTimestamps } from '../../utils/dateUtils';
 
 interface SettingsViewProps {
   settings: AppSettings;
@@ -50,6 +51,7 @@ interface SettingsViewProps {
   isStandalone?: boolean;
   deferredPrompt?: any;
   onTriggerInstall?: () => Promise<void>;
+  lastModifiedAt?: string;
 }
 
 interface PinAuthRequest {
@@ -68,7 +70,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenInstallModal,
   isStandalone,
   deferredPrompt,
-  onTriggerInstall
+  onTriggerInstall,
+  lastModifiedAt
 }) => {
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
@@ -173,7 +176,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
+    message: React.ReactNode;
     confirmText?: string;
     isDestructive?: boolean;
     onConfirm: () => void;
@@ -399,16 +402,65 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
 
       if (check.isEncrypted) {
-        setEncryptedBackupData(check.data);
+        setEncryptedBackupData({
+          ...check.data,
+          lastModifiedAt: check.lastModifiedAt
+        });
         setImportPassword('');
         setDecryptError(null);
         setIsDecryptModalOpen(true);
       } else {
+        const fileDate = check.lastModifiedAt;
+        const comparison = compareTimestamps(fileDate, lastModifiedAt);
+        const isOlder = comparison === 'older';
+
+        const dialogMessage = (
+          <div className="space-y-3 pt-1">
+            <div className="p-3 rounded-xl bg-slate-900/90 border border-white/10 space-y-2 text-xs">
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-400">📁 Seçilen Yedek:</span>
+                <span className="text-white font-mono font-medium text-right">{formatFullDateTime(fileDate)}</span>
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-400">💻 Bu Cihazdaki Veriler:</span>
+                <span className="text-white font-mono font-medium text-right">{formatFullDateTime(lastModifiedAt)}</span>
+              </div>
+            </div>
+
+            {comparison === 'newer' && (
+              <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 font-medium flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>Seçilen yedek, bu cihazdaki son işlemden daha <strong>GÜNCEL</strong>.</span>
+              </div>
+            )}
+
+            {comparison === 'older' && (
+              <div className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-xs text-rose-300 font-medium flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                <span>
+                  <strong>DİKKAT:</strong> Seçilen yedek dosyası, bu cihazdaki son değişiklikten <strong>DAHA ESKİ</strong>! Yedeği yüklerseniz bu cihazdaki yeni işlemleriniz silinecektir.
+                </span>
+              </div>
+            )}
+
+            {comparison === 'equal' && (
+              <div className="p-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-xs text-blue-300 font-medium flex items-center gap-2">
+                <Info className="w-4 h-4 shrink-0 text-blue-400" />
+                <span>Yedek dosyası ile bu cihazdaki veriler <strong>aynı tarihe</strong> sahip.</span>
+              </div>
+            )}
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Mevcut tüm veriler silinecek ve seçtiğiniz standart yedek içeriği yüklenecektir. Bu işlemi onaylıyor musunuz?
+            </p>
+          </div>
+        );
+
         setConfirmState({
           isOpen: true,
-          title: 'Yedekten Geri Yükle',
-          message: 'Mevcut tüm veriler silinecek ve seçtiğiniz standart yedek dosyası yüklenecektir. Bu işlemi onaylıyor musunuz?',
-          confirmText: 'Yedeği Yükle',
+          title: isOlder ? '⚠️ Eski Yedek Uyarısı' : 'Yedekten Geri Yükle',
+          message: dialogMessage,
+          confirmText: isOlder ? 'Yine de Yükle' : 'Yedeği Yükle',
           isDestructive: true,
           onConfirm: () => {
             requirePinAuth(
@@ -790,6 +842,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div>
             <h3 className="text-base font-bold text-white">Yedekleme & Geri Yükleme</h3>
             <p className="text-xs text-slate-400">Verilerinizi şifreli (AES-256) veya standart JSON olarak saklayın</p>
+          </div>
+        </div>
+
+        {/* Device Sync & Last Modified Information Block */}
+        <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800/60 to-slate-900 border border-white/10 space-y-2.5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-amber-400/10 text-amber-400">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-white block">Bu Cihazdaki Son Veri Değişikliği</span>
+                <span className="text-[11px] text-slate-400">Yerel veritabanında son yapılan işlem tarihi</span>
+              </div>
+            </div>
+            <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-xl bg-amber-400/10 text-amber-300 border border-amber-400/20">
+              {formatLastModified(lastModifiedAt)}
+            </span>
+          </div>
+
+          <div className="px-3 py-2 rounded-xl bg-slate-950/70 border border-white/5 flex items-center justify-between text-xs">
+            <span className="text-slate-400 font-medium">Tam Zaman Damgası:</span>
+            <span className="text-white font-mono font-medium">{formatFullDateTime(lastModifiedAt)}</span>
+          </div>
+
+          <div className="pt-1.5 border-t border-white/5 flex items-start gap-2 text-[11px] text-slate-400 leading-relaxed">
+            <Info className="w-4 h-4 text-amber-400/90 shrink-0 mt-0.5" />
+            <span>
+              <strong>Cihaz Eşitleme İpucu:</strong> Hem telefon hem bilgisayarda çalışıyorsanız, en güncel verinin hangi cihazda olduğunu buradaki son değişiklik saatinden anlayabilirsiniz. Yedek yüklerken sistem otomatik olarak dosya tarihiyle bu cihazı karşılaştırır ve sizi uyarır.
+            </span>
           </div>
         </div>
 
@@ -1274,6 +1356,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-200/90 leading-relaxed">
             Seçtiğiniz yedek dosyası <strong>AES-256-GCM</strong> ile şifrelenmiştir. Devam etmek için bu yedeğe ait parolayı girin.
           </div>
+
+          {encryptedBackupData && (
+            <div className="p-3 rounded-xl bg-slate-900 border border-white/10 space-y-2 text-xs">
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-400">📁 Şifreli Yedek Tarihi:</span>
+                <span className="text-white font-mono font-medium">
+                  {formatFullDateTime(encryptedBackupData.lastModifiedAt || encryptedBackupData.exportDate)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-400">💻 Bu Cihazdaki Veriler:</span>
+                <span className="text-white font-mono font-medium">
+                  {formatFullDateTime(lastModifiedAt)}
+                </span>
+              </div>
+              {compareTimestamps(encryptedBackupData.lastModifiedAt || encryptedBackupData.exportDate, lastModifiedAt) === 'older' && (
+                <div className="pt-1.5 border-t border-rose-500/20 text-[11px] text-rose-300 flex items-center gap-1.5 font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                  <span>DİKKAT: Bu yedek bu cihazdaki mevcut verilerden daha eski!</span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">

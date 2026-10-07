@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from './db/db';
+import { db, getLastModifiedTimestamp } from './db/db';
 import { seedInitialDataIfNeeded, forceResetWithDummyData } from './db/seed';
 import { fetchLiveRatesMultiSource, cleanupDeprecatedRates, cleanupDuplicateAssetAccounts, syncTefasFundRatesWithAssets } from './services/ratesService';
 import { getSettings, updateSettings } from './services/securityService';
@@ -43,6 +43,8 @@ export const App: React.FC = () => {
   const transactions = useLiveQuery(() => db.transactions.toArray(), []) || [];
   const marketRates = useLiveQuery(() => db.marketRates.toArray(), []) || [];
   const investmentPlans = useLiveQuery(() => db.investmentPlans.toArray(), []) || [];
+  const lastModifiedRecord = useLiveQuery(() => db.settings.get('lastModifiedAt'), []);
+  const lastModifiedAt = lastModifiedRecord?.value as string | undefined;
 
   // Load Settings and Seed
   const loadSettingsAndInit = async () => {
@@ -67,6 +69,9 @@ export const App: React.FC = () => {
     if (loadedSettings.pinHash) {
       setIsLocked(true);
     }
+
+    // Ensure lastModifiedAt exists and is initialized
+    await getLastModifiedTimestamp();
 
     setIsInitializing(false);
 
@@ -204,6 +209,7 @@ export const App: React.FC = () => {
         onGoDashboard={() => setActiveTab('dashboard')}
         onOpenInstallModal={() => setIsInstallModalOpen(true)}
         isStandalone={isStandalone}
+        lastModifiedAt={lastModifiedAt}
       />
 
       {/* Main Content Area */}
@@ -217,6 +223,7 @@ export const App: React.FC = () => {
             cashFlowEntries={cashFlowEntries}
             hideValues={settings.hideValuesOnScreen}
             onNavigateTab={(tab) => setActiveTab(tab)}
+            lastModifiedAt={lastModifiedAt}
           />
         )}
 
@@ -262,6 +269,7 @@ export const App: React.FC = () => {
             isStandalone={isStandalone}
             deferredPrompt={deferredPrompt}
             onTriggerInstall={handleTriggerInstall}
+            lastModifiedAt={lastModifiedAt}
           />
         )}
       </main>

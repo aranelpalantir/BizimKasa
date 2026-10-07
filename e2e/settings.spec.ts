@@ -11,8 +11,9 @@ test.describe('Ayarlar ve Güvenlik (Settings & PIN Security)', () => {
   test('ayarlar sayfası temel bölümleri listeler', async ({ page }) => {
     await expect(page.getByText('Güvenlik & Giriş Kilidi')).toBeVisible();
     await expect(page.getByText('Yedekleme & Geri Yükleme')).toBeVisible();
+    await expect(page.getByText('Bu Cihazdaki Son Veri Değişikliği')).toBeVisible();
     await expect(page.getByText('%100 Local-First Gizlilik Güvencesi')).toBeVisible();
-    await expect(page.getByText('v1.1.0').first()).toBeVisible();
+    await expect(page.getByText(/v1\.\d+\.\d+/).first()).toBeVisible();
     await expect(page.getByRole('button', { name: /Sürümü Yenile/ })).toBeVisible();
   });
 

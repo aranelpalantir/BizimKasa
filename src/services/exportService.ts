@@ -1,10 +1,11 @@
-import { db } from '../db/db';
+import { db, setSuppressModificationTracking, touchLastModified, getLastModifiedTimestamp } from '../db/db';
 import { forceResetWithDummyData } from '../db/seed';
 import { encryptData, decryptData } from './cryptoService';
 
 export interface BizimKasaBackup {
   version: number;
   exportDate: string;
+  lastModifiedAt?: string;
   app: 'BizimKasa';
   encrypted?: false;
   groups: any[];
@@ -19,6 +20,7 @@ export interface BizimKasaBackup {
 export interface EncryptedBackupFile {
   version: number;
   exportDate: string;
+  lastModifiedAt?: string;
   app: 'BizimKasa';
   encrypted: true;
   crypto: {
@@ -37,6 +39,7 @@ export interface InspectBackupResult {
   data?: any;
   error?: string;
   exportDate?: string;
+  lastModifiedAt?: string;
 }
 
 async function getDatabaseBackupData(): Promise<BizimKasaBackup> {
@@ -48,9 +51,13 @@ async function getDatabaseBackupData(): Promise<BizimKasaBackup> {
   const investmentPlans = await db.investmentPlans.toArray();
   const settings = await db.settings.toArray();
 
+  const lastModRecord = settings.find(s => s.key === 'lastModifiedAt');
+  const lastModifiedAt = (lastModRecord?.value as string) || await getLastModifiedTimestamp();
+
   return {
     version: 1,
     exportDate: new Date().toISOString(),
+    lastModifiedAt,
     app: 'BizimKasa',
     groups,
     accounts,
@@ -67,32 +74,47 @@ async function applyBackupToDatabase(data: BizimKasaBackup): Promise<void> {
     throw new Error('Geçersiz yedek dosyası formatı! BizimKasa yedeği seçiniz.');
   }
 
-  await db.transaction('rw', [
-    db.groups,
-    db.accounts,
-    db.cashFlowEntries,
-    db.transactions,
-    db.marketRates,
-    db.investmentPlans,
-    db.settings
-  ], async () => {
-    await db.groups.clear();
-    await db.accounts.clear();
-    await db.cashFlowEntries.clear();
-    await db.transactions.clear();
-    await db.marketRates.clear();
-    await db.investmentPlans.clear();
-    await db.settings.clear();
+  setSuppressModificationTracking(true);
+  try {
+    await db.transaction('rw', [
+      db.groups,
+      db.accounts,
+      db.cashFlowEntries,
+      db.transactions,
+      db.marketRates,
+      db.investmentPlans,
+      db.settings
+    ], async () => {
+      await db.groups.clear();
+      await db.accounts.clear();
+      await db.cashFlowEntries.clear();
+      await db.transactions.clear();
+      await db.marketRates.clear();
+      await db.investmentPlans.clear();
+      await db.settings.clear();
 
-    if (data.groups.length > 0) await db.groups.bulkAdd(data.groups);
-    if (data.accounts.length > 0) await db.accounts.bulkAdd(data.accounts);
-    if (data.cashFlowEntries?.length > 0) await db.cashFlowEntries.bulkAdd(data.cashFlowEntries);
-    if (data.transactions?.length > 0) await db.transactions.bulkAdd(data.transactions);
-    if (data.marketRates?.length > 0) await db.marketRates.bulkAdd(data.marketRates);
-    if (data.investmentPlans?.length > 0) await db.investmentPlans.bulkAdd(data.investmentPlans);
-    if (data.settings?.length > 0) await db.settings.bulkAdd(data.settings);
-    await db.settings.delete('userClearedData');
-  });
+      if (data.groups.length > 0) await db.groups.bulkAdd(data.groups);
+      if (data.accounts.length > 0) await db.accounts.bulkAdd(data.accounts);
+      if (data.cashFlowEntries?.length > 0) await db.cashFlowEntries.bulkAdd(data.cashFlowEntries);
+      if (data.transactions?.length > 0) await db.transactions.bulkAdd(data.transactions);
+      if (data.marketRates?.length > 0) await db.marketRates.bulkAdd(data.marketRates);
+      if (data.investmentPlans?.length > 0) await db.investmentPlans.bulkAdd(data.investmentPlans);
+      if (data.settings?.length > 0) await db.settings.bulkAdd(data.settings);
+      await db.settings.delete('userClearedData');
+
+      // Yedekten gelen son değişiklik zamanını doğrudan koru
+      const restoredLastModified = 
+        data.lastModifiedAt || 
+        (data.settings?.find((s: any) => s.key === 'lastModifiedAt')?.value) || 
+        data.exportDate || 
+        new Date().toISOString();
+
+      await db.settings.put({ key: 'lastModifiedAt', value: restoredLastModified });
+      await db.settings.put({ key: 'lastImportedAt', value: new Date().toISOString() });
+    });
+  } finally {
+    setSuppressModificationTracking(false);
+  }
 }
 
 export async function exportDatabaseToJSON(): Promise<void> {
@@ -123,6 +145,7 @@ export async function exportEncryptedBackup(password: string): Promise<void> {
   const fileData: EncryptedBackupFile = {
     version: 1,
     exportDate: new Date().toISOString(),
+    lastModifiedAt: backupData.lastModifiedAt,
     app: 'BizimKasa',
     encrypted: true,
     crypto: {
@@ -165,7 +188,8 @@ export async function inspectBackupFile(file: File): Promise<InspectBackupResult
         valid: true,
         isEncrypted: true,
         data,
-        exportDate: data.exportDate
+        exportDate: data.exportDate,
+        lastModifiedAt: data.lastModifiedAt || data.exportDate
       };
     }
 
@@ -173,11 +197,17 @@ export async function inspectBackupFile(file: File): Promise<InspectBackupResult
       return { valid: false, isEncrypted: false, error: 'Yedek dosyası içeriği eksik veya geçersiz formatta.' };
     }
 
+    const fileLastModified = 
+      data.lastModifiedAt || 
+      (data.settings?.find((s: any) => s.key === 'lastModifiedAt')?.value) || 
+      data.exportDate;
+
     return {
       valid: true,
       isEncrypted: false,
       data,
-      exportDate: data.exportDate
+      exportDate: data.exportDate,
+      lastModifiedAt: fileLastModified
     };
   } catch {
     return { valid: false, isEncrypted: false, error: 'Dosya okunamadı veya geçerli bir JSON formatında değil.' };
@@ -199,6 +229,10 @@ export async function restoreEncryptedBackup(fileData: any, password: string): P
     );
 
     const decryptedData: BizimKasaBackup = JSON.parse(decryptedJsonStr);
+    // If outer file had lastModifiedAt, attach it if missing in decryptedData
+    if (!decryptedData.lastModifiedAt && fileData.lastModifiedAt) {
+      decryptedData.lastModifiedAt = fileData.lastModifiedAt;
+    }
     await applyBackupToDatabase(decryptedData);
     return { success: true, message: 'Şifreli yedek başarıyla çözüldü ve tüm veriler geri yüklendi!' };
   } catch (err: any) {
@@ -235,6 +269,7 @@ export async function resetToSampleData(): Promise<void> {
   await db.settings.delete('userClearedData');
   await forceResetWithDummyData();
   await db.settings.put({ key: 'dummyDataVersion', value: 6 });
+  touchLastModified();
 }
 
 export async function clearAllDatabaseData(): Promise<void> {
@@ -269,4 +304,5 @@ export async function clearAllDatabaseData(): Promise<void> {
     await db.settings.put({ key: 'userClearedData', value: true });
     await db.settings.put({ key: 'dummyDataVersion', value: 6 });
   });
+  touchLastModified();
 }

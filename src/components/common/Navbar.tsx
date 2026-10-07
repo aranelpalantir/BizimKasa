@@ -1,8 +1,9 @@
 import React from 'react';
-import { Shield, Eye, EyeOff, Lock, RefreshCw, Smartphone } from 'lucide-react';
+import { Shield, Eye, EyeOff, Lock, RefreshCw, Smartphone, Clock } from 'lucide-react';
 import { GithubIcon } from './GithubIcon';
 import { APP_VERSION } from '../../version';
 import type { AppSettings } from '../../types/finance';
+import { formatLastModified, formatMobileLastModified, formatFullDateTime } from '../../utils/dateUtils';
 
 interface NavbarProps {
   settings: AppSettings;
@@ -13,6 +14,7 @@ interface NavbarProps {
   onGoDashboard?: () => void;
   onOpenInstallModal?: () => void;
   isStandalone?: boolean;
+  lastModifiedAt?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -23,7 +25,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isRefreshingRates,
   onGoDashboard,
   onOpenInstallModal,
-  isStandalone
+  isStandalone,
+  lastModifiedAt
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-white/10 px-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-3 select-none">
@@ -50,11 +53,33 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-400 -mt-0.5">Ortak Bütçe & Varlık Portföyü</p>
+            {/* Mobile Last Modified Indicator */}
+            {lastModifiedAt && (
+              <div 
+                title={`Sistemdeki Son Veri Değişikliği: ${formatFullDateTime(lastModifiedAt)}`}
+                className="flex sm:hidden items-center gap-1 text-[10px] text-amber-300 font-medium mt-0.5"
+              >
+                <Clock className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                <span className="text-slate-400 text-[9.5px]">Son işlem:</span>
+                <span className="text-amber-300 font-semibold text-[9.5px]">{formatMobileLastModified(lastModifiedAt)}</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {/* Desktop Last Modified Badge */}
+          {lastModifiedAt && (
+            <div 
+              title={`Sistemdeki Son Veri Değişikliği: ${formatFullDateTime(lastModifiedAt)}`}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-white/5 text-xs text-slate-300 transition-colors shadow-sm select-none cursor-default mr-1"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-slate-400">Son Değişiklik:</span>
+              <span className="font-semibold text-amber-300">{formatLastModified(lastModifiedAt)}</span>
+            </div>
+          )}
           {/* Refresh Rates */}
           <button
             onClick={onRefreshRates}
