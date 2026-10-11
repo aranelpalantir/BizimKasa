@@ -18,7 +18,11 @@ import {
   Building2,
   Sparkles,
   PlusCircle,
-  Palette
+  Palette,
+  Copy,
+  Zap,
+  Check,
+  ArrowRight
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -124,6 +128,112 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     message: '',
     onConfirm: () => {}
   });
+
+  // Bulk Copy Modal State
+  const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+  const [copySourceYear, setCopySourceYear] = useState<number>(selectedYear);
+  const [copySourceMonth, setCopySourceMonth] = useState<number>(currentRealMonth === 1 ? 12 : currentRealMonth - 1);
+  const [copyTargetYear, setCopyTargetYear] = useState<number>(selectedYear);
+  const [copyTargetMonth, setCopyTargetMonth] = useState<number>(currentRealMonth);
+  const [copyScope, setCopyScope] = useState<'INCOME_ONLY' | 'FIXED_AND_INCOME' | 'ALL'>('INCOME_ONLY');
+  const [copyOnlyEmpty, setCopyOnlyEmpty] = useState<boolean>(true);
+  const [copyGroupId, setCopyGroupId] = useState<string>('ALL');
+
+  // Toast notification state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Helper to open copy modal pre-filled
+  const handleOpenCopyModal = (targetY?: number, targetM?: number) => {
+    const tYear = targetY ?? selectedYear;
+    const tMonth = targetM ?? (viewMode === 'monthly' ? selectedMonth : currentRealMonth);
+    const sMonth = tMonth === 1 ? 12 : tMonth - 1;
+    const sYear = tMonth === 1 ? tYear - 1 : tYear;
+
+    setCopyTargetYear(tYear);
+    setCopyTargetMonth(tMonth);
+    setCopySourceYear(sYear);
+    setCopySourceMonth(sMonth);
+    setCopyScope('INCOME_ONLY');
+    setCopyOnlyEmpty(true);
+    setCopyGroupId(selectedGroupId);
+    setIsCopyModalOpen(true);
+  };
+
+  // Helper to find the last recorded positive entry for an account before a given year & month
+  const getLastRecordedEntry = (accountId: string, curYear: number, curMonth: number) => {
+    const candidates = entries
+      .filter(e => e.accountId === accountId && e.amount > 0 && (e.year < curYear || (e.year === curYear && e.month < curMonth)))
+      .sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month));
+    return candidates[0] || null;
+  };
+
+  // Calculation of preview items for the copy modal
+  const getCopyPreview = () => {
+    const isSamePeriod = copySourceYear === copyTargetYear && copySourceMonth === copyTargetMonth;
+    if (isSamePeriod) {
+      return { itemsToCopy: [], itemsSkipped: [], totalIncome: 0, totalExpense: 0, isSamePeriod: true };
+    }
+
+    const candidateAccounts = accounts.filter(acc => {
+      if (copyGroupId !== 'ALL' && acc.groupId !== copyGroupId) return false;
+      if (copyScope === 'INCOME_ONLY') {
+        return acc.type === 'INCOME';
+      }
+      if (copyScope === 'FIXED_AND_INCOME') {
+        return acc.type === 'INCOME' || acc.subType === 'EXPENSE_FIXED' || acc.subType === 'EXPENSE_BILLS';
+      }
+      return acc.type === 'INCOME' || acc.type === 'EXPENSE';
+    });
+
+    const itemsToCopy: Array<{ account: Account; sourceAmount: number; isOverwriting: boolean }> = [];
+    const itemsSkipped: Array<{ account: Account; sourceAmount: number; targetAmount: number }> = [];
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    for (const acc of candidateAccounts) {
+      const sEntry = entries.find(
+        e => e.accountId === acc.id && e.year === copySourceYear && e.month === copySourceMonth
+      );
+      const sAmt = sEntry?.amount || 0;
+      if (sAmt <= 0) continue;
+
+      const tEntry = entries.find(
+        e => e.accountId === acc.id && e.year === copyTargetYear && e.month === copyTargetMonth
+      );
+      const tAmt = tEntry?.amount || 0;
+      const isTargetFilled = tAmt > 0;
+
+      if (copyOnlyEmpty && isTargetFilled) {
+        itemsSkipped.push({ account: acc, sourceAmount: sAmt, targetAmount: tAmt });
+      } else {
+        itemsToCopy.push({ account: acc, sourceAmount: sAmt, isOverwriting: isTargetFilled });
+        if (acc.type === 'INCOME') totalIncome += sAmt;
+        if (acc.type === 'EXPENSE') totalExpense += sAmt;
+      }
+    }
+
+    return { itemsToCopy, itemsSkipped, totalIncome, totalExpense, isSamePeriod: false };
+  };
+
+  const handleExecuteCopy = async () => {
+    const { itemsToCopy, isSamePeriod } = getCopyPreview();
+    if (isSamePeriod || itemsToCopy.length === 0) return;
+
+    const now = new Date().toISOString();
+    const entriesToPut: CashFlowEntry[] = itemsToCopy.map(item => ({
+      id: `cf_${item.account.id}_${copyTargetYear}_${copyTargetMonth}`,
+      accountId: item.account.id,
+      year: copyTargetYear,
+      month: copyTargetMonth,
+      amount: item.sourceAmount,
+      updatedAt: now
+    }));
+
+    await db.cashFlowEntries.bulkPut(entriesToPut);
+    setIsCopyModalOpen(false);
+    setToastMessage(`${itemsToCopy.length} kalem ${MONTH_NAMES[copyTargetMonth - 1]} ${copyTargetYear} dönemine başarıyla aktarıldı.`);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
 
   // Calculate dynamic available years from entries and future projections
   const uniqueEntryYears = Array.from(new Set(entries.map(e => e.year)));
@@ -452,6 +562,16 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             </button>
           </div>
 
+          {/* Bulk Copy Month Button */}
+          <button
+            onClick={() => handleOpenCopyModal()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-white/10 transition-colors shadow-sm"
+            title="Geçmiş bir aydan bütçe kalemlerini bu aya kopyala"
+          >
+            <Copy className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Önceki Aydan Kopyala</span>
+          </button>
+
           {/* New Account Button */}
           <button
             onClick={() => setIsGroupModalOpen(true)}
@@ -541,8 +661,21 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                         isCurrentMonth ? 'text-amber-400 bg-amber-400/10 font-bold' : 'bg-slate-950'
                       }`}
                     >
-                      <div className="flex flex-col items-end">
-                        <span>{MONTH_NAMES[m - 1]}</span>
+                      <div className="flex flex-col items-end group/th">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenCopyModal(selectedYear, m);
+                            }}
+                            title={`${MONTH_NAMES[m - 1]} ${selectedYear} dönemine önceki aydan kopyala`}
+                            className="opacity-0 group-hover/th:opacity-100 p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-emerald-400 transition-opacity"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                          <span>{MONTH_NAMES[m - 1]}</span>
+                        </div>
                         {isCurrentMonth && (
                           <span className="text-[9px] uppercase px-1 rounded bg-amber-500/20 text-amber-300 mt-0.5">
                             Bu Ay
@@ -763,6 +896,24 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                           </tr>
                         ))}
 
+                        {/* Group Income Subtotal */}
+                        <tr className="bg-emerald-500/10 font-bold text-emerald-400">
+                          <td className="py-2 px-3 sm:px-4 sticky left-0 z-10 bg-slate-950 border-r border-b border-t border-emerald-500/20 min-w-[190px] max-w-[190px] sm:min-w-[230px] sm:max-w-[230px] w-[190px] sm:w-[230px] shadow-[2px_0_5px_rgba(0,0,0,0.4)]">
+                            <div className="truncate">
+                              {group.name} Gelir
+                            </div>
+                          </td>
+                          {visibleMonths.map((m) => {
+                            const { totalIncome } = calcGroupTotals(group, m);
+                            const isCurrentMonth = selectedYear === currentRealYear && m === currentRealMonth;
+                            return (
+                              <td key={m} className={`py-2 px-2.5 text-right font-mono border-b border-t border-emerald-500/20 ${isCurrentMonth ? 'bg-amber-500/[0.05]' : ''}`}>
+                                {formatSmartNumber(totalIncome, hideValues)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+
                         {/* Group Remaining Subtotal */}
                         <tr className="bg-blue-500/10 font-bold text-blue-400">
                           <td className="py-2 px-3 sm:px-4 sticky left-0 z-10 bg-slate-950 border-r border-b-2 border-t border-blue-500/20 border-b-white/15 min-w-[190px] max-w-[190px] sm:min-w-[230px] sm:max-w-[230px] w-[190px] sm:w-[230px] shadow-[2px_0_5px_rgba(0,0,0,0.4)]">
@@ -860,38 +1011,74 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
               <Calendar className="w-4 h-4 text-amber-400" />
               <span>{MONTH_NAMES[selectedMonth - 1]} {selectedYear}</span>
             </div>
-            <button
-              onClick={handleNextMonth}
-              title="Sonraki Ay (Yıl Aşımı Destekli)"
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition-colors"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleOpenCopyModal(selectedYear, selectedMonth)}
+                title="Önceki aydan bu aya verileri kopyala"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-white/10 transition-colors shadow-sm"
+              >
+                <Copy className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">Önceki Aydan Aktar</span>
+              </button>
+              <button
+                onClick={handleNextMonth}
+                title="Sonraki Ay (Yıl Aşımı Destekli)"
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition-colors"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Consolidated Month Summary */}
           {(() => {
             const { grandExpense, grandIncome, grandRemaining } = calcConsolidated(selectedMonth);
             return (
-              <div className="grid grid-cols-3 gap-2.5 p-4 rounded-2xl bg-slate-900/90 border border-white/10 text-center">
-                <div className="flex flex-col">
-                  <span className="text-[11px] font-semibold text-rose-400 uppercase">Toplam Gider</span>
-                  <span className="text-base sm:text-lg font-bold text-white mt-1 font-mono">
-                    {formatTRY(grandExpense, hideValues)}
-                  </span>
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2.5 p-4 rounded-2xl bg-slate-900/90 border border-white/10 text-center">
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-semibold text-rose-400 uppercase">Toplam Gider</span>
+                    <span className="text-base sm:text-lg font-bold text-white mt-1 font-mono">
+                      {formatTRY(grandExpense, hideValues)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col border-x border-white/10 px-1">
+                    <span className="text-[11px] font-semibold text-emerald-400 uppercase">Toplam Gelir</span>
+                    <span className="text-base sm:text-lg font-bold text-white mt-1 font-mono">
+                      {formatTRY(grandIncome, hideValues)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-semibold text-blue-400 uppercase">Kalan Bütçe</span>
+                    <span className={`text-base sm:text-lg font-bold mt-1 font-mono ${grandRemaining < 0 ? 'text-rose-400' : 'text-blue-400'}`}>
+                      {formatTRY(grandRemaining, hideValues)}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-col border-x border-white/10 px-1">
-                  <span className="text-[11px] font-semibold text-emerald-400 uppercase">Toplam Gelir</span>
-                  <span className="text-base sm:text-lg font-bold text-white mt-1 font-mono">
-                    {formatTRY(grandIncome, hideValues)}
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[11px] font-semibold text-blue-400 uppercase">Kalan Bütçe</span>
-                  <span className={`text-base sm:text-lg font-bold mt-1 font-mono ${grandRemaining < 0 ? 'text-rose-400' : 'text-blue-400'}`}>
-                    {formatTRY(grandRemaining, hideValues)}
-                  </span>
-                </div>
+
+                {/* Smart Suggestion Banner if no income entered for this month */}
+                {grandIncome === 0 && (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-slate-900/90 to-slate-900/90 border border-emerald-500/20">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 shrink-0">
+                        <Zap className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">Bu ay için henüz gelir girilmemiş</p>
+                        <p className="text-[11px] text-slate-400">Önceki ayın maaş, kira ve düzenli gelirlerini tek tıkla buraya aktarabilirsiniz.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCopyModal(selectedYear, selectedMonth)}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-colors shadow-lg shadow-emerald-500/20 shrink-0 self-end sm:self-center active:scale-95"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Gelirleri Önceki Aydan Kopyala</span>
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -1051,6 +1238,31 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                 placeholder="Örn: 35000 veya 12,45"
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-white font-mono font-bold text-lg focus:outline-none focus:border-amber-400 transition-colors"
               />
+
+              {/* Quick Fill from Previous Recorded Month */}
+              {(() => {
+                const lastRecorded = getLastRecordedEntry(editingCell.account.id, selectedYear, editingCell.month);
+                if (!lastRecorded) return null;
+                return (
+                  <div className="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setCellInputValue(formatForInput(lastRecorded.amount))}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 hover:text-amber-200 border border-amber-500/20 text-xs font-semibold transition-all group active:scale-95 shadow-sm"
+                      title={`${MONTH_NAMES[lastRecorded.month - 1]} ${lastRecorded.year} tutarını kutucuğa aktar`}
+                    >
+                      <Zap className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
+                      <span>Önceki Tutar:</span>
+                      <span className="font-mono font-bold text-white ml-0.5">
+                        {formatSmartTRY(lastRecorded.amount, false)}
+                      </span>
+                    </button>
+                    <span className="text-[11px] text-slate-500 font-mono">
+                      {MONTH_NAMES[lastRecorded.month - 1]} {lastRecorded.year}
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -1360,6 +1572,300 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         onClose={() => setEditingGroup(null)}
         group={editingGroup}
       />
+
+      {/* Bulk Copy Month Modal */}
+      <Modal
+        isOpen={isCopyModalOpen}
+        onClose={() => setIsCopyModalOpen(false)}
+        title="Önceki Aydan Veri Kopyala"
+        maxWidth="max-w-lg"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-400">
+            Maaş, kira geliri veya sabit giderleri her ay tek tek girmek yerine önceki aydan otomatik aktarabilirsiniz.
+          </p>
+
+          {/* Source -> Target Selectors */}
+          <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-white/10 space-y-3">
+            <div className="flex items-center justify-between pb-1 border-b border-white/5">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Aktarım Yönü</span>
+              <div className="flex items-center gap-1.5 text-xs font-mono">
+                <span className="text-slate-400">{MONTH_NAMES[copySourceMonth - 1]} {copySourceYear}</span>
+                <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
+                <span className="font-bold text-amber-300">{MONTH_NAMES[copyTargetMonth - 1]} {copyTargetYear}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+              {/* Source Period */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                  Kaynak Dönem (Nereden)
+                </label>
+                <div className="flex gap-1.5">
+                  <select
+                    value={copySourceMonth}
+                    onChange={(e) => setCopySourceMonth(Number(e.target.value))}
+                    className="flex-1 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-white text-xs font-medium focus:outline-none focus:border-amber-400 cursor-pointer"
+                  >
+                    {MONTH_NAMES.map((name, idx) => (
+                      <option key={idx + 1} value={idx + 1}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={copySourceYear}
+                    onChange={(e) => setCopySourceYear(Number(e.target.value))}
+                    className="w-20 px-2 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-white text-xs font-medium focus:outline-none focus:border-amber-400 cursor-pointer"
+                  >
+                    {dynamicYears.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Target Period */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider block">
+                  Hedef Dönem (Nereye)
+                </label>
+                <div className="flex gap-1.5">
+                  <select
+                    value={copyTargetMonth}
+                    onChange={(e) => setCopyTargetMonth(Number(e.target.value))}
+                    className="flex-1 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-amber-400/30 text-white text-xs font-medium focus:outline-none focus:border-amber-400 cursor-pointer"
+                  >
+                    {MONTH_NAMES.map((name, idx) => (
+                      <option key={idx + 1} value={idx + 1}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={copyTargetYear}
+                    onChange={(e) => setCopyTargetYear(Number(e.target.value))}
+                    className="w-20 px-2 py-1.5 rounded-xl bg-slate-900 border border-amber-400/30 text-white text-xs font-medium focus:outline-none focus:border-amber-400 cursor-pointer"
+                  >
+                    {dynamicYears.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Same Period Warning */}
+            {copySourceYear === copyTargetYear && copySourceMonth === copyTargetMonth && (
+              <p className="text-xs text-rose-400 font-medium pt-1">
+                ⚠️ Kaynak dönem ile hedef dönem aynı olamaz. Lütfen farklı aylar seçin.
+              </p>
+            )}
+          </div>
+
+          {/* Group Filter (If multiple groups exist) */}
+          {groups.length > 1 && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300 block">Hesap Filtresi</label>
+              <select
+                value={copyGroupId}
+                onChange={(e) => setCopyGroupId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-400 cursor-pointer"
+              >
+                <option value="ALL">Tüm Hesaplar (Ortak)</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Scope Selector */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-slate-300 block">
+              Hangi Kalemler Kopyalansın?
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setCopyScope('INCOME_ONLY')}
+                className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
+                  copyScope === 'INCOME_ONLY'
+                    ? 'bg-emerald-500/15 border-emerald-400 text-white shadow-md shadow-emerald-500/10'
+                    : 'bg-slate-950/40 border-white/10 text-slate-400 hover:border-white/20'
+                }`}
+              >
+                <div className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>Sadece Gelirler</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 leading-tight">
+                  Maaş, kira geliri ve düzenli gelirler
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCopyScope('FIXED_AND_INCOME')}
+                className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
+                  copyScope === 'FIXED_AND_INCOME'
+                    ? 'bg-amber-500/15 border-amber-400 text-white shadow-md shadow-amber-500/10'
+                    : 'bg-slate-950/40 border-white/10 text-slate-400 hover:border-white/20'
+                }`}
+              >
+                <div className="font-bold text-xs text-amber-400 flex items-center gap-1.5">
+                  <Home className="w-3.5 h-3.5" />
+                  <span>Sabit Kalemler</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 leading-tight">
+                  Gelirler + Kira, aidat ve sabit faturalar
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCopyScope('ALL')}
+                className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
+                  copyScope === 'ALL'
+                    ? 'bg-blue-500/15 border-blue-400 text-white shadow-md shadow-blue-500/10'
+                    : 'bg-slate-950/40 border-white/10 text-slate-400 hover:border-white/20'
+                }`}
+              >
+                <div className="font-bold text-xs text-blue-400 flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>Tüm Kalemler</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 leading-tight">
+                  Kart ekstreleri dahil tüm kalemler
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Overwrite Protection Option */}
+          <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-950/50 border border-white/5 cursor-pointer hover:bg-slate-950 transition-colors">
+            <input
+              type="checkbox"
+              checked={copyOnlyEmpty}
+              onChange={(e) => setCopyOnlyEmpty(e.target.checked)}
+              className="mt-0.5 rounded bg-slate-900 border-white/20 text-amber-500 focus:ring-0 cursor-pointer"
+            />
+            <div className="text-xs">
+              <span className="font-medium text-white">Yalnızca boş kalemleri doldur (Önerilen)</span>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Hedef ayda önceden elle girdiğiniz bir tutar varsa korunur, üzerine yazılmaz.
+              </p>
+            </div>
+          </label>
+
+          {/* Preview / Results */}
+          {(() => {
+            const { itemsToCopy, itemsSkipped, totalIncome, totalExpense, isSamePeriod } = getCopyPreview();
+            if (isSamePeriod) return null;
+
+            return (
+              <div className="space-y-2 pt-1">
+                {itemsToCopy.length > 0 ? (
+                  <div className="p-3 rounded-xl bg-slate-950/60 border border-white/10 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400 font-medium">Aktarılacak Kalemler:</span>
+                      <span className="font-bold text-amber-300 font-mono">{itemsToCopy.length} Kalem</span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {totalIncome > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 font-semibold font-mono">
+                          +{formatTRY(totalIncome, false)} Gelir
+                        </span>
+                      )}
+                      {totalExpense > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-400 font-semibold font-mono">
+                          -{formatTRY(totalExpense, false)} Gider
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Compact Scrollable List */}
+                    <div className="max-h-32 overflow-y-auto space-y-1 pr-1 pt-1 border-t border-white/5">
+                      {itemsToCopy.map(({ account, sourceAmount, isOverwriting }) => (
+                        <div key={account.id} className="flex items-center justify-between text-xs py-1 px-1.5 rounded hover:bg-slate-900">
+                          <span className={`truncate mr-2 ${account.type === 'INCOME' ? 'text-emerald-300' : 'text-slate-300'}`}>
+                            {account.name}
+                            {isOverwriting && <span className="ml-1 text-[10px] text-amber-400 font-normal">(üzerine yazılacak)</span>}
+                          </span>
+                          <span className="font-mono font-medium text-white shrink-0">
+                            {formatSmartTRY(sourceAmount, false)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {itemsSkipped.length > 0 && (
+                      <p className="text-[11px] text-amber-400/80 pt-1">
+                        ℹ️ {itemsSkipped.length} adet kalem hedef ayda zaten dolu olduğu için atlanacak.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-slate-950/40 border border-white/5 text-center text-xs text-slate-400">
+                    <p className="font-medium text-slate-300">Aktarılacak veri bulunamadı.</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {MONTH_NAMES[copySourceMonth - 1]} {copySourceYear} döneminde seçilen kapsama uygun kayıt yok
+                      {copyOnlyEmpty && ' veya hedef aydaki kalemler zaten dolu'}.
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-2 pt-2 border-t border-white/10">
+            <button
+              type="button"
+              onClick={() => setIsCopyModalOpen(false)}
+              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700 transition-colors cursor-pointer"
+            >
+              Vazgeç
+            </button>
+            {(() => {
+              const { itemsToCopy, isSamePeriod } = getCopyPreview();
+              const isDisabled = isSamePeriod || itemsToCopy.length === 0;
+
+              return (
+                <button
+                  type="button"
+                  onClick={handleExecuteCopy}
+                  disabled={isDisabled}
+                  className={`px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg ${
+                    isDisabled
+                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed shadow-none'
+                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20 active:scale-95 cursor-pointer'
+                  }`}
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Kopyala ve Uygula ({itemsToCopy.length})</span>
+                </button>
+              );
+            })()}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl bg-emerald-500 text-slate-950 font-bold text-xs shadow-2xl shadow-emerald-500/30 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <Check className="w-4 h-4 shrink-0 stroke-[3]" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 };

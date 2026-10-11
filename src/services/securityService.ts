@@ -105,6 +105,55 @@ export async function verifyPin(pin: string, storedHash: string): Promise<boolea
   return hash === storedHash;
 }
 
+// Detect if current client is a mobile device (iOS/Android/iPadOS)
+export function isMobileDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
+}
+
+// Check if biometrics is explicitly enabled for this specific device
+export function isDeviceBiometricsEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('bizimkasa_device_biometrics_enabled') === 'true';
+}
+
+export function getDeviceBiometricCredentialId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('bizimkasa_device_biometric_cred_id');
+}
+
+export function setDeviceBiometrics(enabled: boolean, credentialId?: string): void {
+  if (typeof window === 'undefined') return;
+  if (enabled) {
+    localStorage.setItem('bizimkasa_device_biometrics_enabled', 'true');
+    if (credentialId) {
+      localStorage.setItem('bizimkasa_device_biometric_cred_id', credentialId);
+    }
+  } else {
+    localStorage.setItem('bizimkasa_device_biometrics_enabled', 'false');
+    localStorage.removeItem('bizimkasa_device_biometric_cred_id');
+  }
+}
+
+// Helper to determine if biometrics should be active for the current device
+export function isBiometricsActiveForDevice(settings?: AppSettings): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const localVal = localStorage.getItem('bizimkasa_device_biometrics_enabled');
+  if (localVal === 'false') return false;
+  if (localVal === 'true') return true;
+
+  // On desktop / web, if not explicitly registered on this device, default to false.
+  // This completely eliminates unwanted passkey/WebAuthn popups on desktop.
+  if (!isMobileDevice()) {
+    return false;
+  }
+
+  // On mobile devices, respect settings.biometricsEnabled for backward compatibility
+  return !!settings?.biometricsEnabled;
+}
+
 // Check if WebAuthn (FaceID / TouchID / Windows Hello) is supported and secure context
 export async function isBiometricsAvailable(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
@@ -223,6 +272,7 @@ export async function registerBiometrics(): Promise<BiometricResult> {
 
     if (credential && credential.rawId) {
       const credIdBase64 = bufferToBase64(credential.rawId);
+      setDeviceBiometrics(true, credIdBase64);
       const settingsRecord = await db.settings.get('appSettings');
       if (settingsRecord) {
         settingsRecord.value.biometricsEnabled = true;
@@ -241,7 +291,7 @@ export async function registerBiometrics(): Promise<BiometricResult> {
   }
 }
 
-// Authenticate via Biometrics (FaceID / TouchID)
+// Authenticate via Biometrics (FaceID / TouchID / Windows Hello)
 export async function authenticateWithBiometrics(): Promise<boolean> {
   if (typeof window === 'undefined' || !window.isSecureContext || !window.PublicKeyCredential) {
     return false;
@@ -251,6 +301,9 @@ export async function authenticateWithBiometrics(): Promise<boolean> {
   if (isIpAddress) return false;
 
   const settings = await getSettings();
+  if (!isBiometricsActiveForDevice(settings)) {
+    return false;
+  }
 
   try {
     const challenge = new Uint8Array(32);
@@ -289,6 +342,17 @@ export async function authenticateWithBiometrics(): Promise<boolean> {
   }
 }
 
+// In-memory active session PIN (Never written to disk/localStorage, strictly in RAM during session)
+let activeSessionPin: string | null = null;
+
+export function setSessionPin(pin: string | null): void {
+  activeSessionPin = pin;
+}
+
+export function getSessionPin(): string | null {
+  return activeSessionPin;
+}
+
 export async function getSettings(): Promise<AppSettings> {
   const record = await db.settings.get('appSettings');
   if (record && record.value) {
@@ -300,7 +364,8 @@ export async function getSettings(): Promise<AppSettings> {
     lastActiveTimestamp: Date.now(),
     isLocked: false,
     defaultCurrency: 'TRY',
-    hideValuesOnScreen: false
+    hideValuesOnScreen: false,
+    autoSyncGoogleDrive: false
   };
 }
 
@@ -309,3 +374,4 @@ export async function updateSettings(newSettings: Partial<AppSettings>): Promise
   const updated = { ...current, ...newSettings };
   await db.settings.put({ key: 'appSettings', value: updated });
 }
+

@@ -114,4 +114,5 @@ export interface AppSettings {
   defaultCurrency: 'TRY' | 'USD' | 'EUR';
   hideValuesOnScreen: boolean;
   selectedGroupFilter?: string; // 'ALL' or specific groupId
+  autoSyncGoogleDrive?: boolean;
 }

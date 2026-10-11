@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { NetWorthCard } from './NetWorthCard';
+import { MonthlyCashFlowHeroCard } from './MonthlyCashFlowHeroCard';
+import { MonthlyExpenseBreakdownCard } from './MonthlyExpenseBreakdownCard';
+import type { ExpenseItemBreakdown } from './MonthlyExpenseBreakdownCard';
 import { RealReturnChips } from './RealReturnChips';
 import { RatesTicker } from './RatesTicker';
 import { PortfolioAllocationChart } from './PortfolioAllocationChart';
@@ -7,7 +10,7 @@ import { GroupFilterBar } from '../common/GroupFilterBar';
 import { AddAccountModal } from '../common/AddAccountModal';
 import { EditAccountModal } from '../common/EditAccountModal';
 import { calculatePortfolioSummary, formatTRY, formatNumber } from '../../services/portfolioService';
-import { ArrowRight, Coins, Euro, LineChart, Users, Plus, Wallet, Palette, Clock } from 'lucide-react';
+import { Coins, Euro, LineChart, Users, Plus, Wallet, Palette, Clock } from 'lucide-react';
 import { formatLastModified, formatFullDateTime } from '../../utils/dateUtils';
 import type { Account, AssetTransaction, MarketRate, CashFlowEntry, Group } from '../../types/finance';
 
@@ -37,11 +40,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateTab,
   lastModifiedAt
 }) => {
-  const currentYear = 2026;
-  const currentMonth = new Date().getMonth() + 1; // 1-12
+  const currentDate = new Date();
+  const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1); // 1-12
   const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+
+  const handlePrevMonth = () => {
+    if (selectedMonth === 1) {
+      setSelectedMonth(12);
+      setSelectedYear(y => y - 1);
+    } else {
+      setSelectedMonth(m => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (selectedMonth === 12) {
+      setSelectedMonth(1);
+      setSelectedYear(y => y + 1);
+    } else {
+      setSelectedMonth(m => m + 1);
+    }
+  };
+
+  const handleResetMonth = () => {
+    setSelectedYear(2026);
+    setSelectedMonth(currentDate.getMonth() + 1);
+  };
 
   // 1. Calculate Portfolio metrics based on selected group
   const portfolioSummary = calculatePortfolioSummary(
@@ -52,21 +79,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     selectedGroupId
   );
 
-  // 2. Calculate Current Month Cash Flow based on selected group
+  // 2. Calculate Selected Month Cash Flow based on selected group
   let monthExpense = 0;
   let monthIncome = 0;
+  let expenseCount = 0;
+  let incomeCount = 0;
+  const expenseItemsRaw: { id: string; name: string; amount: number }[] = [];
+
   for (const e of cashFlowEntries) {
-    if (e.year === currentYear && e.month === currentMonth) {
+    if (e.year === selectedYear && e.month === selectedMonth) {
       const acc = accounts.find(a => a.id === e.accountId);
       if (acc) {
         if (selectedGroupId === 'ALL' || acc.groupId === selectedGroupId) {
-          if (acc.type === 'EXPENSE') monthExpense += e.amount;
-          if (acc.type === 'INCOME') monthIncome += e.amount;
+          if (acc.type === 'EXPENSE' && e.amount > 0) {
+            monthExpense += e.amount;
+            expenseCount++;
+            expenseItemsRaw.push({ id: acc.id, name: acc.name, amount: e.amount });
+          }
+          if (acc.type === 'INCOME' && e.amount > 0) {
+            monthIncome += e.amount;
+            incomeCount++;
+          }
         }
       }
     }
   }
   const monthRemaining = monthIncome - monthExpense;
+
+  // Sort expense items descending and compute percentages
+  const sortedExpenseItems: ExpenseItemBreakdown[] = expenseItemsRaw
+    .sort((a, b) => b.amount - a.amount)
+    .map(item => ({
+      ...item,
+      percentage: monthExpense > 0 ? (item.amount / monthExpense) * 100 : 0
+    }));
+
+  const topExpense = sortedExpenseItems[0]
+    ? { name: sortedExpenseItems[0].name, amount: sortedExpenseItems[0].amount }
+    : undefined;
 
   const currentGroup = selectedGroupId === 'ALL' ? undefined : groups.find(g => g.id === selectedGroupId);
   const currentGroupName = selectedGroupId === 'ALL' 
@@ -133,45 +183,67 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         />
       </div>
 
-      {/* Main Net Worth Hero Card */}
-      <div className="space-y-1">
-        {selectedGroupId !== 'ALL' && currentGroup && (
-          <div 
-            className="flex items-center justify-between px-3 py-2 rounded-2xl border transition-all"
+      {/* Group Active Banner (when specific group is selected) */}
+      {selectedGroupId !== 'ALL' && currentGroup && (
+        <div 
+          className="flex items-center justify-between px-3 py-2 rounded-2xl border transition-all"
+          style={{
+            backgroundColor: `${currentGroup.color}15`,
+            borderColor: `${currentGroup.color}35`,
+          }}
+        >
+          <div className="flex items-center gap-2 text-xs font-bold" style={{ color: currentGroup.color }}>
+            <div 
+              className="w-2.5 h-2.5 rounded-full shrink-0" 
+              style={{ backgroundColor: currentGroup.color, boxShadow: `0 0 8px ${currentGroup.color}` }} 
+            />
+            <Users className="w-3.5 h-3.5" />
+            <span>{currentGroupName} Verileri Görüntüleniyor</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditingGroup(currentGroup)}
+            title={`${currentGroup.name} Renk Temasını Değiştir`}
+            aria-label={`${currentGroup.name} renk temasını değiştir`}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border transition-all text-[11px] font-medium shadow-sm active:scale-95 cursor-pointer"
             style={{
-              backgroundColor: `${currentGroup.color}15`,
-              borderColor: `${currentGroup.color}35`,
+              borderColor: `${currentGroup.color}40`,
+              color: currentGroup.color
             }}
           >
-            <div className="flex items-center gap-2 text-xs font-bold" style={{ color: currentGroup.color }}>
-              <div 
-                className="w-2.5 h-2.5 rounded-full shrink-0" 
-                style={{ backgroundColor: currentGroup.color, boxShadow: `0 0 8px ${currentGroup.color}` }} 
-              />
-              <Users className="w-3.5 h-3.5" />
-              <span>{currentGroupName} Varlıkları Görüntüleniyor</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setEditingGroup(currentGroup)}
-              title={`${currentGroup.name} Renk Temasını Değiştir`}
-              aria-label={`${currentGroup.name} renk temasını değiştir`}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border transition-all text-[11px] font-medium shadow-sm active:scale-95 cursor-pointer"
-              style={{
-                borderColor: `${currentGroup.color}40`,
-                color: currentGroup.color
-              }}
-            >
-              <Palette className="w-3 h-3" />
-              <span>Renk Temasını Değiştir</span>
-            </button>
-          </div>
-        )}
+            <Palette className="w-3 h-3" />
+            <span>Renk Temasını Değiştir</span>
+          </button>
+        </div>
+      )}
+
+      {/* Main Executive Cockpit: Twin Hero Cards (Assets & Cash Flow) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Left: Net Worth Card (Balance Sheet / Assets) */}
         <NetWorthCard 
           summary={portfolioSummary} 
           hideValues={hideValues} 
           themeColor={currentGroup?.color}
           accountName={currentGroup?.name}
+        />
+
+        {/* Right: Monthly Cash Flow Cockpit (Income & Expense) */}
+        <MonthlyCashFlowHeroCard
+          year={selectedYear}
+          month={selectedMonth}
+          onPrevMonth={handlePrevMonth}
+          onNextMonth={handleNextMonth}
+          onResetMonth={handleResetMonth}
+          income={monthIncome}
+          expense={monthExpense}
+          remaining={monthRemaining}
+          hideValues={hideValues}
+          themeColor={currentGroup?.color}
+          accountName={currentGroup?.name}
+          onNavigateBudget={() => onNavigateTab('budget')}
+          topExpense={topExpense}
+          incomeCount={incomeCount}
+          expenseCount={expenseCount}
         />
       </div>
 
@@ -233,59 +305,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       )}
 
-      {/* Middle Grid: Cash Flow Snapshot & Asset Allocation */}
+      {/* Middle Grid: Asset Allocation & Monthly Expense Breakdown */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Monthly Cash Flow Card */}
-        <div className="p-5 rounded-3xl bg-slate-900/80 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                {MONTH_NAMES[currentMonth - 1]} {currentYear} Bütçe Durumu
-              </h3>
-              <span className="text-sm font-bold text-white mt-0.5 flex items-center gap-2">
-                {currentGroup && (
-                  <span
-                    className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
-                    style={{ backgroundColor: currentGroup.color, boxShadow: `0 0 6px ${currentGroup.color}` }}
-                  />
-                )}
-                <span>{currentGroupName} Nakit Akışı</span>
-              </span>
-            </div>
-
-            <button
-              onClick={() => onNavigateTab('budget')}
-              className="flex items-center gap-1 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors"
-            >
-              <span>Matrise Git</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-slate-950/60 border border-white/5 text-center">
-            <div>
-              <span className="text-[10px] font-semibold text-emerald-400 uppercase block">Gelir</span>
-              <span className="text-sm sm:text-base font-bold font-mono text-white mt-1 block">
-                {formatTRY(monthIncome, hideValues)}
-              </span>
-            </div>
-            <div className="border-x border-white/10 px-1">
-              <span className="text-[10px] font-semibold text-rose-400 uppercase block">Gider</span>
-              <span className="text-sm sm:text-base font-bold font-mono text-white mt-1 block">
-                {formatTRY(monthExpense, hideValues)}
-              </span>
-            </div>
-            <div>
-              <span className="text-[10px] font-semibold text-blue-400 uppercase block">Kalan</span>
-              <span className={`text-sm sm:text-base font-bold font-mono mt-1 block ${monthRemaining < 0 ? 'text-rose-400' : 'text-blue-400'}`}>
-                {formatTRY(monthRemaining, hideValues)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Portfolio Allocation Chart */}
+        {/* Portfolio Asset Allocation (Donut Chart) */}
         <PortfolioAllocationChart summary={portfolioSummary} hideValues={hideValues} />
+
+        {/* Monthly Expense Breakdown Card (Kalem Bazında Harcamalar) */}
+        <MonthlyExpenseBreakdownCard
+          monthName={MONTH_NAMES[selectedMonth - 1]}
+          year={selectedYear}
+          expenses={sortedExpenseItems}
+          totalExpense={monthExpense}
+          hideValues={hideValues}
+          onNavigateBudget={() => onNavigateTab('budget')}
+        />
       </div>
 
       {/* Quick Asset Category Cards */}

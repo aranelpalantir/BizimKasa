@@ -15,6 +15,7 @@ export interface BizimKasaBackup {
   marketRates: any[];
   investmentPlans: any[];
   settings: any[];
+  deletedRecords?: any[];
 }
 
 export interface EncryptedBackupFile {
@@ -50,6 +51,7 @@ async function getDatabaseBackupData(): Promise<BizimKasaBackup> {
   const marketRates = await db.marketRates.toArray();
   const investmentPlans = await db.investmentPlans.toArray();
   const settings = await db.settings.toArray();
+  const deletedRecords = await db.deletedRecords.toArray().catch(() => []);
 
   const lastModRecord = settings.find(s => s.key === 'lastModifiedAt');
   const lastModifiedAt = (lastModRecord?.value as string) || await getLastModifiedTimestamp();
@@ -65,7 +67,8 @@ async function getDatabaseBackupData(): Promise<BizimKasaBackup> {
     transactions,
     marketRates,
     investmentPlans,
-    settings
+    settings,
+    deletedRecords
   };
 }
 
@@ -83,7 +86,8 @@ async function applyBackupToDatabase(data: BizimKasaBackup): Promise<void> {
       db.transactions,
       db.marketRates,
       db.investmentPlans,
-      db.settings
+      db.settings,
+      db.deletedRecords
     ], async () => {
       await db.groups.clear();
       await db.accounts.clear();
@@ -92,6 +96,7 @@ async function applyBackupToDatabase(data: BizimKasaBackup): Promise<void> {
       await db.marketRates.clear();
       await db.investmentPlans.clear();
       await db.settings.clear();
+      await db.deletedRecords.clear();
 
       if (data.groups.length > 0) await db.groups.bulkAdd(data.groups);
       if (data.accounts.length > 0) await db.accounts.bulkAdd(data.accounts);
@@ -100,6 +105,9 @@ async function applyBackupToDatabase(data: BizimKasaBackup): Promise<void> {
       if (data.marketRates?.length > 0) await db.marketRates.bulkAdd(data.marketRates);
       if (data.investmentPlans?.length > 0) await db.investmentPlans.bulkAdd(data.investmentPlans);
       if (data.settings?.length > 0) await db.settings.bulkAdd(data.settings);
+      if (data.deletedRecords && data.deletedRecords.length > 0) {
+        await db.deletedRecords.bulkAdd(data.deletedRecords);
+      }
       await db.settings.delete('userClearedData');
 
       // Yedekten gelen son değişiklik zamanını doğrudan koru
@@ -112,6 +120,226 @@ async function applyBackupToDatabase(data: BizimKasaBackup): Promise<void> {
       await db.settings.put({ key: 'lastModifiedAt', value: restoredLastModified });
       await db.settings.put({ key: 'lastImportedAt', value: new Date().toISOString() });
     });
+  } finally {
+    setSuppressModificationTracking(false);
+  }
+}
+
+/**
+ * Akıllı Kayıt Birleştirme (Smart Merge):
+ * Veritabanını körü körüne ezmek yerine; gelen yedek ile bu cihazdaki verileri
+ * benzersiz kimlik (ID), silinme kayıtları (Tombstones) ve en son güncellenme tarihine göre birleştirir.
+ */
+export async function smartMergeBackupToDatabase(
+  remoteData: BizimKasaBackup
+): Promise<{ success: boolean; message: string; mergedLastModified: string }> {
+  if (remoteData.app !== 'BizimKasa' || !Array.isArray(remoteData.groups) || !Array.isArray(remoteData.accounts)) {
+    throw new Error('Geçersiz yedek dosyası formatı! BizimKasa yedeği seçiniz.');
+  }
+
+  setSuppressModificationTracking(true);
+  try {
+    const mergedLastModified = new Date().toISOString();
+
+    await db.transaction('rw', [
+      db.groups,
+      db.accounts,
+      db.cashFlowEntries,
+      db.transactions,
+      db.marketRates,
+      db.investmentPlans,
+      db.settings,
+      db.deletedRecords
+    ], async () => {
+      // 1. Mevcut yerel tabloları çek
+      const localGroups = await db.groups.toArray();
+      const localAccounts = await db.accounts.toArray();
+      const localEntries = await db.cashFlowEntries.toArray();
+      const localTxs = await db.transactions.toArray();
+      const localPlans = await db.investmentPlans.toArray();
+      const localRates = await db.marketRates.toArray();
+      const localSettings = await db.settings.toArray();
+      const localDeletions = await db.deletedRecords.toArray();
+
+      // 2. Silinme Damgalarını (Tombstones) Birleştir
+      const tombstoneMap = new Map<string, { id: string; recordId: string; tableName: string; deletedAt: string }>();
+      for (const d of localDeletions) {
+        tombstoneMap.set(d.id, d);
+      }
+      for (const d of (remoteData.deletedRecords || [])) {
+        const existing = tombstoneMap.get(d.id);
+        if (!existing || new Date(d.deletedAt).getTime() > new Date(existing.deletedAt).getTime()) {
+          tombstoneMap.set(d.id, d);
+        }
+      }
+
+      const mergedTombstones = Array.from(tombstoneMap.values());
+      await db.deletedRecords.clear();
+      if (mergedTombstones.length > 0) {
+        await db.deletedRecords.bulkAdd(mergedTombstones);
+      }
+
+      function isDeleted(tableName: string, id: string, itemTimestamp?: string): boolean {
+        const t = tombstoneMap.get(`${tableName}:${id}`);
+        if (!t) return false;
+        if (!itemTimestamp) return true;
+        const itemMs = new Date(itemTimestamp).getTime();
+        const tombMs = new Date(t.deletedAt).getTime();
+        return tombMs >= itemMs;
+      }
+
+      function mergeEntities<T extends { id: string }>(
+        tableName: string,
+        localList: T[],
+        remoteList: T[],
+        getTimestamp: (item: T) => string | undefined
+      ): T[] {
+        const map = new Map<string, T>();
+
+        for (const item of localList) {
+          const ts = getTimestamp(item);
+          if (!isDeleted(tableName, item.id, ts)) {
+            map.set(item.id, item);
+          }
+        }
+
+        for (const item of remoteList) {
+          const ts = getTimestamp(item);
+          if (isDeleted(tableName, item.id, ts)) {
+            map.delete(item.id);
+            continue;
+          }
+
+          const existing = map.get(item.id);
+          if (!existing) {
+            map.set(item.id, item);
+          } else {
+            const localTs = getTimestamp(existing);
+            const remoteTs = ts;
+            if (!localTs && remoteTs) {
+              map.set(item.id, item);
+            } else if (localTs && remoteTs) {
+              const localMs = new Date(localTs).getTime();
+              const remoteMs = new Date(remoteTs).getTime();
+              if (remoteMs > localMs) {
+                map.set(item.id, item);
+              }
+            } else {
+              map.set(item.id, item);
+            }
+          }
+        }
+
+        return Array.from(map.values());
+      }
+
+      // Varlıkları birleştir
+      const mergedGroups = mergeEntities(
+        'groups',
+        localGroups,
+        remoteData.groups || [],
+        (g: any) => g.updatedAt
+      );
+
+      const mergedAccounts = mergeEntities(
+        'accounts',
+        localAccounts,
+        remoteData.accounts || [],
+        (a: any) => a.updatedAt
+      );
+
+      const mergedTxs = mergeEntities(
+        'transactions',
+        localTxs,
+        remoteData.transactions || [],
+        (t: any) => t.updatedAt || t.createdAt || t.date
+      );
+
+      const mergedEntries = mergeEntities(
+        'cashFlowEntries',
+        localEntries,
+        remoteData.cashFlowEntries || [],
+        (e: any) => e.updatedAt
+      );
+
+      const mergedPlans = mergeEntities(
+        'investmentPlans',
+        localPlans,
+        remoteData.investmentPlans || [],
+        (p: any) => p.updatedAt
+      );
+
+      // Kurları birleştir
+      const rateMap = new Map<string, any>();
+      for (const r of localRates) rateMap.set(r.symbol, r);
+      for (const r of (remoteData.marketRates || [])) {
+        const existing = rateMap.get(r.symbol);
+        if (!existing) {
+          rateMap.set(r.symbol, r);
+        } else {
+          const localMs = existing.lastUpdated ? new Date(existing.lastUpdated).getTime() : 0;
+          const remoteMs = r.lastUpdated ? new Date(r.lastUpdated).getTime() : 0;
+          if (remoteMs >= localMs) rateMap.set(r.symbol, r);
+        }
+      }
+      const mergedRates = Array.from(rateMap.values());
+
+      // Ayarları birleştir
+      const settingsMap = new Map<string, any>();
+      for (const s of localSettings) settingsMap.set(s.key, s.value);
+      for (const s of (remoteData.settings || [])) {
+        if (s.key === 'appSettings') {
+          const localApp = settingsMap.get('appSettings') || {};
+          const remoteApp = s.value || {};
+          // Biyometrik sensör ve geçiş anahtarı donanım bazlı olduğu için yerel cihazın ayarını koru
+          settingsMap.set('appSettings', { 
+            ...localApp, 
+            ...remoteApp,
+            biometricsEnabled: localApp.biometricsEnabled ?? false,
+            biometricCredentialId: localApp.biometricCredentialId
+          });
+        } else if (s.key !== 'lastModifiedAt' && s.key !== 'lastImportedAt') {
+          if (!settingsMap.has(s.key)) settingsMap.set(s.key, s.value);
+        }
+      }
+
+      // Veritabanına temiz ve atomik olarak yaz
+      await db.groups.clear();
+      if (mergedGroups.length > 0) await db.groups.bulkAdd(mergedGroups);
+
+      await db.accounts.clear();
+      if (mergedAccounts.length > 0) await db.accounts.bulkAdd(mergedAccounts);
+
+      await db.transactions.clear();
+      if (mergedTxs.length > 0) await db.transactions.bulkAdd(mergedTxs);
+
+      await db.cashFlowEntries.clear();
+      if (mergedEntries.length > 0) await db.cashFlowEntries.bulkAdd(mergedEntries);
+
+      await db.investmentPlans.clear();
+      if (mergedPlans.length > 0) await db.investmentPlans.bulkAdd(mergedPlans);
+
+      await db.marketRates.clear();
+      if (mergedRates.length > 0) await db.marketRates.bulkAdd(mergedRates);
+
+      await db.settings.clear();
+      const settingsRecords = Array.from(settingsMap.entries()).map(([key, value]) => ({ key, value }));
+      if (settingsRecords.length > 0) await db.settings.bulkAdd(settingsRecords);
+
+      await db.settings.delete('userClearedData');
+      await db.settings.put({ key: 'lastModifiedAt', value: mergedLastModified });
+      await db.settings.put({ key: 'lastImportedAt', value: new Date().toISOString() });
+    });
+
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      sessionStorage.setItem('bizimkasa_bypass_lock_once', 'true');
+    }
+
+    return {
+      success: true,
+      message: 'Veriler akıllı birleştirme ile başarıyla eşitlendi!',
+      mergedLastModified
+    };
   } finally {
     setSuppressModificationTracking(false);
   }
@@ -214,25 +442,29 @@ export async function inspectBackupFile(file: File): Promise<InspectBackupResult
   }
 }
 
+export async function decryptBackupPayload(fileData: any, password: string): Promise<BizimKasaBackup> {
+  const decryptedJsonStr = await decryptData(
+    {
+      algorithm: fileData.crypto.algorithm,
+      keyDerivation: fileData.crypto.keyDerivation,
+      iterations: fileData.crypto.iterations,
+      salt: fileData.crypto.salt,
+      iv: fileData.crypto.iv,
+      ciphertext: fileData.ciphertext
+    },
+    password
+  );
+
+  const decryptedData: BizimKasaBackup = JSON.parse(decryptedJsonStr);
+  if (!decryptedData.lastModifiedAt && fileData.lastModifiedAt) {
+    decryptedData.lastModifiedAt = fileData.lastModifiedAt;
+  }
+  return decryptedData;
+}
+
 export async function restoreEncryptedBackup(fileData: any, password: string): Promise<{ success: boolean; message: string }> {
   try {
-    const decryptedJsonStr = await decryptData(
-      {
-        algorithm: fileData.crypto.algorithm,
-        keyDerivation: fileData.crypto.keyDerivation,
-        iterations: fileData.crypto.iterations,
-        salt: fileData.crypto.salt,
-        iv: fileData.crypto.iv,
-        ciphertext: fileData.ciphertext
-      },
-      password
-    );
-
-    const decryptedData: BizimKasaBackup = JSON.parse(decryptedJsonStr);
-    // If outer file had lastModifiedAt, attach it if missing in decryptedData
-    if (!decryptedData.lastModifiedAt && fileData.lastModifiedAt) {
-      decryptedData.lastModifiedAt = fileData.lastModifiedAt;
-    }
+    const decryptedData = await decryptBackupPayload(fileData, password);
     await applyBackupToDatabase(decryptedData);
     return { success: true, message: 'Şifreli yedek başarıyla çözüldü ve tüm veriler geri yüklendi!' };
   } catch (err: any) {
@@ -243,6 +475,9 @@ export async function restoreEncryptedBackup(fileData: any, password: string): P
 export async function restorePlainBackup(backupData: BizimKasaBackup): Promise<{ success: boolean; message: string }> {
   try {
     await applyBackupToDatabase(backupData);
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      sessionStorage.setItem('bizimkasa_bypass_lock_once', 'true');
+    }
     return { success: true, message: 'Yedek başarıyla geri yüklendi!' };
   } catch (err: any) {
     return { success: false, message: `Geri yükleme başarısız: ${err?.message || 'Bilinmeyen hata'}` };

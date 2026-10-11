@@ -11,6 +11,7 @@ interface ConfirmDialogProps {
   confirmText?: string;
   cancelText?: string;
   isDestructive?: boolean;
+  zIndex?: string;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -21,10 +22,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   message,
   confirmText = 'Sil',
   cancelText = 'Vazgeç',
-  isDestructive = true
+  isDestructive = true,
+  zIndex = 'z-[60]'
 }) => {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title}>
+    <Modal isOpen={isOpen} onClose={onClose} title={title} zIndex={zIndex}>
       <div className="space-y-4">
         <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-slate-950/60 border border-white/5">
           <div className={`p-2.5 rounded-xl flex-shrink-0 ${

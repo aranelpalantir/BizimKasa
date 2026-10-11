@@ -7,6 +7,7 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   maxWidth?: string;
+  zIndex?: string;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -14,7 +15,8 @@ export const Modal: React.FC<ModalProps> = ({
   onClose,
   title,
   children,
-  maxWidth = 'max-w-lg'
+  maxWidth = 'max-w-lg',
+  zIndex = 'z-50'
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -39,7 +41,7 @@ export const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className={`fixed inset-0 ${zIndex} flex items-end sm:items-center justify-center p-0 sm:p-4`}>
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"

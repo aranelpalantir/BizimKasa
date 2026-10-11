@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, ScanFace, Delete, AlertCircle } from 'lucide-react';
-import { verifyPin, authenticateWithBiometrics } from '../../services/securityService';
+import { 
+  verifyPin, 
+  authenticateWithBiometrics, 
+  setSessionPin, 
+  isBiometricsActiveForDevice, 
+  isMobileDevice 
+} from '../../services/securityService';
 import type { AppSettings } from '../../types/finance';
 
 interface LockScreenProps {
@@ -14,12 +20,16 @@ export const LockScreen: React.FC<LockScreenProps> = ({ settings, onUnlock }) =>
   const [shake, setShake] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
 
-  // Auto trigger biometrics if enabled
+  const isBioActive = isBiometricsActiveForDevice(settings);
+  const isMobile = isMobileDevice();
+
+  // Auto trigger biometrics ONLY on mobile devices where biometrics is active on this device
+  // On desktop / web, NEVER auto-prompt WebAuthn on mount (prevents "Geçiş anahtarı yok" Chrome popup)
   useEffect(() => {
-    if (settings.biometricsEnabled) {
+    if (isBioActive && isMobile) {
       triggerBiometrics();
     }
-  }, [settings.biometricsEnabled]);
+  }, [isBioActive, isMobile]);
 
   const triggerBiometrics = async () => {
     setIsVerifying(true);
@@ -53,6 +63,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ settings, onUnlock }) =>
       if (newPin.length >= 4) {
         const isValid = await verifyPin(newPin, settings.pinHash);
         if (isValid) {
+          setSessionPin(newPin);
           onUnlock();
           return;
         }
@@ -142,14 +153,14 @@ export const LockScreen: React.FC<LockScreenProps> = ({ settings, onUnlock }) =>
           ))}
           
           {/* Biometrics or Clear Button */}
-          {settings.biometricsEnabled ? (
+          {isBioActive ? (
             <button
               onClick={triggerBiometrics}
               disabled={isVerifying}
               className="h-16 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 active:scale-90 text-amber-400 transition-all border border-amber-500/20 flex flex-col items-center justify-center gap-1"
             >
               <ScanFace className="w-6 h-6" />
-              <span className="text-[10px] font-medium">Face ID</span>
+              <span className="text-[10px] font-medium">{isMobile ? 'Face ID' : 'Geçiş Anahtarı'}</span>
             </button>
           ) : (
             <button

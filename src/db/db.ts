@@ -19,6 +19,16 @@ export function setSuppressModificationTracking(suppress: boolean) {
   isTrackingSuppressed = suppress;
 }
 
+export type DatabaseModificationListener = (iso: string) => void;
+const modificationListeners: Set<DatabaseModificationListener> = new Set();
+
+export function onDatabaseModified(listener: DatabaseModificationListener): () => void {
+  modificationListeners.add(listener);
+  return () => {
+    modificationListeners.delete(listener);
+  };
+}
+
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function touchLastModified(explicitDate?: string): void {
@@ -28,10 +38,24 @@ export function touchLastModified(explicitDate?: string): void {
   debounceTimer = setTimeout(async () => {
     try {
       await db.settings.put({ key: 'lastModifiedAt', value: iso });
+      modificationListeners.forEach(listener => {
+        try {
+          listener(iso);
+        } catch (err) {
+          console.warn('Modification listener error:', err);
+        }
+      });
     } catch (e) {
       console.warn('Failed to update lastModifiedAt:', e);
     }
   }, 100);
+}
+
+export interface DeletedRecord {
+  id: string; // composite key: `${tableName}:${recordId}`
+  recordId: string;
+  tableName: string;
+  deletedAt: string;
 }
 
 export class BizimKasaDatabase extends Dexie {
@@ -42,6 +66,7 @@ export class BizimKasaDatabase extends Dexie {
   marketRates!: Table<MarketRate, string>;
   investmentPlans!: Table<MonthlyInvestmentPlan, string>;
   settings!: Table<SettingRecord, string>;
+  deletedRecords!: Table<DeletedRecord, string>;
 
   constructor() {
     super('BizimKasaDB');
@@ -61,6 +86,10 @@ export class BizimKasaDatabase extends Dexie {
       rateHistory: null
     });
 
+    this.version(4).stores({
+      deletedRecords: 'id, recordId, tableName, deletedAt'
+    });
+
     this.setupModificationHooks();
   }
 
@@ -73,23 +102,47 @@ export class BizimKasaDatabase extends Dexie {
       'investmentPlans'
     ];
 
-    const attachHooks = (table: Table<any, any>) => {
-      const hookHandler = () => {
+    const attachHooks = (tableName: string, table: Table<any, any>) => {
+      const changeHandler = () => {
         if (isTrackingSuppressed) return;
         touchLastModified();
       };
 
-      table.hook('creating', hookHandler);
-      table.hook('updating', hookHandler);
-      table.hook('deleting', hookHandler);
+      table.hook('creating', changeHandler);
+      table.hook('updating', changeHandler);
+      table.hook('deleting', (primKey, _obj, transaction) => {
+        if (isTrackingSuppressed) return;
+        const idStr = String(primKey);
+        const iso = new Date().toISOString();
+        try {
+          transaction.table('deletedRecords').put({
+            id: `${tableName}:${idStr}`,
+            recordId: idStr,
+            tableName,
+            deletedAt: iso
+          });
+        } catch (e) {
+          console.warn('Failed to record deletion tombstone:', e);
+        }
+        touchLastModified(iso);
+      });
     };
 
     for (const name of userTableNames) {
       const table = this.table(name);
       if (table) {
-        attachHooks(table);
+        attachHooks(name, table);
       }
     }
+  }
+}
+
+export async function cleanupExpiredTombstones(daysOld = 30): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+    await db.deletedRecords.where('deletedAt').below(cutoff).delete();
+  } catch (err) {
+    console.warn('Tombstone cleanup error:', err);
   }
 }
 

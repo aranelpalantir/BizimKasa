@@ -19,8 +19,23 @@ import {
   ExternalLink,
   Info,
   Palette,
-  Plus
+  Plus,
+  Cloud,
+  CloudUpload,
+  CloudDownload,
+  LogOut,
+  RefreshCw
 } from 'lucide-react';
+import {
+  requestGoogleAccessToken,
+  disconnectGoogleDrive,
+  getStoredAccessToken,
+  getConnectedUserEmail,
+  uploadToGoogleDrive,
+  fetchFromGoogleDrive,
+  syncWithGoogleDrive,
+  getLastSyncTime
+} from '../../services/googleDriveService';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { GithubIcon } from '../common/GithubIcon';
@@ -29,13 +44,23 @@ import { AddAccountModal } from '../common/AddAccountModal';
 import { getThemeColorName } from '../../constants/themeColors';
 import { db } from '../../db/db';
 import { APP_VERSION, APP_BUILD_DATE } from '../../version';
-import { hashPin, verifyPin, registerBiometrics, updateSettings } from '../../services/securityService';
+import { 
+  hashPin, 
+  verifyPin, 
+  registerBiometrics, 
+  updateSettings, 
+  setSessionPin, 
+  getSessionPin,
+  isBiometricsActiveForDevice,
+  isMobileDevice,
+  setDeviceBiometrics
+} from '../../services/securityService';
 import { 
   exportDatabaseToJSON, 
   exportEncryptedBackup,
   inspectBackupFile,
-  restoreEncryptedBackup,
   restorePlainBackup,
+  decryptBackupPayload,
   resetToSampleData, 
   clearAllDatabaseData 
 } from '../../services/exportService';
@@ -59,7 +84,7 @@ interface PinAuthRequest {
   description: string;
   confirmButtonText?: string;
   isDestructive?: boolean;
-  onSuccess: () => void | Promise<void>;
+  onSuccess: (enteredPin?: string) => void | Promise<void>;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -101,6 +126,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showImportPassword, setShowImportPassword] = useState(false);
   const [decryptError, setDecryptError] = useState<string | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
+
+  // Google Drive Sync state
+  const [isGdriveConnected, setIsGdriveConnected] = useState(Boolean(getStoredAccessToken()));
+  const [gdriveEmail, setGdriveEmail] = useState<string | null>(getConnectedUserEmail());
+  const [isGdriveSyncing, setIsGdriveSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTimeState] = useState<string | null>(getLastSyncTime());
 
   // Version and Cache Refresh state
   const [isRefreshingCache, setIsRefreshingCache] = useState(false);
@@ -198,7 +229,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const requirePinAuth = (
     title: string,
     description: string,
-    onSuccess: () => void | Promise<void>,
+    onSuccess: (enteredPin?: string) => void | Promise<void>,
     options?: { confirmButtonText?: string; isDestructive?: boolean }
   ) => {
     if (!settings.pinHash) {
@@ -238,11 +269,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
 
+    const entered = pinAuthInput;
     const action = pinAuthRequest.onSuccess;
+    setSessionPin(entered);
     setPinAuthRequest(null);
     setPinAuthInput('');
     setPinAuthError(null);
-    await action();
+    await action(entered);
   };
 
   const handleSavePin = async () => {
@@ -277,6 +310,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       const hashed = await hashPin(newPin);
       await updateSettings({ pinHash: hashed, pinLength: newPin.length });
+      setSessionPin(newPin);
       onRefreshSettings();
       setIsPinModalOpen(false);
       setCurrentPin('');
@@ -300,12 +334,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           biometricsEnabled: false,
           biometricCredentialId: undefined
         });
+        setSessionPin(null);
         onRefreshSettings();
         showFeedback('success', 'PIN koruması kaldırıldı.');
       },
       { confirmButtonText: 'Kaldır', isDestructive: true }
     );
   };
+
+  const isBioActive = isBiometricsActiveForDevice(settings);
+  const isMobile = isMobileDevice();
 
   const handleToggleBiometrics = async () => {
     if (!settings.pinHash) {
@@ -314,15 +352,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
 
-    if (!settings.biometricsEnabled) {
+    if (!isBioActive) {
       const res = await registerBiometrics();
       if (res.success) {
+        setDeviceBiometrics(true, res.credentialId);
         await updateSettings({
           biometricsEnabled: true,
           biometricCredentialId: res.credentialId
         });
         onRefreshSettings();
-        showFeedback('success', 'Biyometrik doğrulama (Face ID / Touch ID) aktifleştirildi.');
+        showFeedback('success', isMobile 
+          ? 'Biyometrik doğrulama (Face ID / Touch ID) bu cihazda aktifleştirildi.' 
+          : 'Biyometrik doğrulama (Geçiş Anahtarı / Windows Hello) bu cihazda aktifleştirildi.');
       } else {
         showFeedback('error', res.errorReason || 'Biyometrik sensör bulunamadı veya onaylanmadı.');
       }
@@ -332,12 +373,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         'Biyometrik Korumayı Kapat',
         'Biyometrik doğrulamayı devre dışı bırakmak için lütfen mevcut PIN kodunuzu girin.',
         async () => {
+          setDeviceBiometrics(false);
           await updateSettings({
             biometricsEnabled: false,
             biometricCredentialId: undefined
           });
           onRefreshSettings();
-          showFeedback('success', 'Biyometrik doğrulama devre dışı bırakıldı.');
+          showFeedback('success', 'Biyometrik doğrulama bu cihazda devre dışı bırakıldı.');
         },
         { confirmButtonText: 'Kapat', isDestructive: false }
       );
@@ -493,29 +535,248 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
 
-    requirePinAuth(
-      'Şifreli Yedeği Yükle',
-      'Şifresi çözülen yedeği mevcut verilerin üzerine yazmak için lütfen PIN kodunuzu girin.',
-      async () => {
-        setIsDecrypting(true);
-        setDecryptError(null);
-        try {
-          const res = await restoreEncryptedBackup(encryptedBackupData, importPassword);
-          if (res.success) {
-            setIsDecryptModalOpen(false);
-            showFeedback('success', res.message);
-            setTimeout(() => window.location.reload(), 800);
-          } else {
-            setDecryptError(res.message);
-          }
-        } catch (err: any) {
-          setDecryptError(err?.message || 'Şifre çözme hatası!');
-        } finally {
-          setIsDecrypting(false);
+    setIsDecrypting(true);
+    setDecryptError(null);
+
+    let decryptedData: any = null;
+    try {
+      decryptedData = await decryptBackupPayload(encryptedBackupData, importPassword);
+    } catch {
+      setIsDecrypting(false);
+      setDecryptError('Girdiğiniz yedek şifresi hatalı! Lütfen kontrol edin.');
+      return;
+    }
+
+    setIsDecrypting(false);
+    setIsDecryptModalOpen(false);
+
+    try {
+      const res = await restorePlainBackup(decryptedData);
+      if (res.success) {
+        setSessionPin(importPassword);
+        showFeedback('success', 'Yedek başarıyla çözüldü, verileriniz ve PIN kodunuz güncellendi!');
+        setTimeout(() => window.location.reload(), 800);
+      } else {
+        showFeedback('error', res.message);
+      }
+    } catch (err: any) {
+      showFeedback('error', err?.message || 'Geri yükleme hatası!');
+    }
+  };
+
+  const handleToggleAutoSync = async () => {
+    const nextVal = !settings.autoSyncGoogleDrive;
+    await updateSettings({ autoSyncGoogleDrive: nextVal });
+    onRefreshSettings();
+    if (nextVal) {
+      showFeedback('success', 'Otomatik eşitleme açıldı. Senkronizasyon başlatılıyor...');
+      setIsGdriveSyncing(true);
+      try {
+        const res = await syncWithGoogleDrive();
+        setLastSyncTimeState(getLastSyncTime());
+        if (res.action === 'downloaded') {
+          showFeedback('success', 'Buluttan güncel veriler çekildi.');
+          setTimeout(() => window.location.reload(), 500);
+        } else if (res.action === 'uploaded') {
+          showFeedback('success', 'Verileriniz bulutla başarıyla eşitlendi!');
+        } else if (res.action === 'prompt_pin') {
+          setImportPassword('');
+          setEncryptedBackupData(res.remoteData);
+          setIsDecryptModalOpen(true);
+        } else {
+          showFeedback('success', res.message);
         }
+      } catch (err: any) {
+        showFeedback('error', `Eşitleme hatası: ${err?.message || 'Bilinmeyen hata'}`);
+      } finally {
+        setIsGdriveSyncing(false);
+      }
+    } else {
+      showFeedback('success', 'Otomatik eşitleme kapatıldı (Manuel mod).');
+    }
+  };
+
+  const handleSyncNow = async () => {
+    setIsGdriveSyncing(true);
+    try {
+      const res = await syncWithGoogleDrive();
+      setLastSyncTimeState(getLastSyncTime());
+      if (res.action === 'downloaded') {
+        showFeedback('success', 'Buluttan yeni veriler alındı, yenileniyor...');
+        setTimeout(() => window.location.reload(), 500);
+      } else if (res.action === 'uploaded') {
+        showFeedback('success', 'Yerel veriler buluta yüklendi.');
+        onRefreshSettings();
+      } else if (res.action === 'prompt_pin') {
+        setImportPassword('');
+        setEncryptedBackupData(res.remoteData);
+        setIsDecryptModalOpen(true);
+      } else if (res.action === 'error') {
+        showFeedback('error', res.message);
+      } else {
+        showFeedback('success', res.message || 'Verileriniz zaten güncel.');
+      }
+    } catch (err: any) {
+      showFeedback('error', `Eşitleme hatası: ${err?.message || 'Bilinmeyen hata'}`);
+    } finally {
+      setIsGdriveSyncing(false);
+    }
+  };
+
+  const handleConnectGoogleDrive = async () => {
+    setIsGdriveSyncing(true);
+    try {
+      await requestGoogleAccessToken(true);
+      setIsGdriveConnected(true);
+      setGdriveEmail(getConnectedUserEmail());
+      showFeedback('success', 'Google Drive başarıyla bağlandı!');
+    } catch (err: any) {
+      showFeedback('error', err?.message || 'Google Drive bağlantısı kurulamadı.');
+    } finally {
+      setIsGdriveSyncing(false);
+    }
+  };
+
+  const handleDisconnectGoogleDrive = () => {
+    disconnectGoogleDrive();
+    setIsGdriveConnected(false);
+    setGdriveEmail(null);
+    showFeedback('success', 'Google Drive bağlantısı kaldırıldı.');
+  };
+
+  const handleUploadGoogleDrive = () => {
+    if (!settings.pinHash) {
+      showFeedback('error', 'Buluta şifreli yedekleme için önce bir PIN kodu belirlemelisiniz.');
+      setIsPinModalOpen(true);
+      return;
+    }
+
+    const sessionPin = getSessionPin();
+    if (sessionPin) {
+      executeUploadToDrive(sessionPin);
+      return;
+    }
+
+    requirePinAuth(
+      'PIN ile Şifrele ve Buluta Gönder',
+      'Finansal verileriniz PIN kodunuzla askeri düzeyde (AES-256) şifrelenerek Google Drive özel alanınıza yüklenecektir.',
+      async (verifiedPin) => {
+        if (verifiedPin) setSessionPin(verifiedPin);
+        await executeUploadToDrive(verifiedPin);
       },
-      { confirmButtonText: 'Yedeği Yükle', isDestructive: true }
+      { confirmButtonText: 'Şifrele ve Gönder' }
     );
+  };
+
+  const executeUploadToDrive = async (pin?: string) => {
+    setIsGdriveSyncing(true);
+    try {
+      const res = await uploadToGoogleDrive(pin);
+      setLastSyncTimeState(res.modifiedTime);
+      showFeedback('success', 'Verileriniz PIN kodunuz ile şifrelenerek Google Drive’a başarıyla yüklendi!');
+    } catch (err: any) {
+      showFeedback('error', `Eşitleme başarısız: ${err?.message || 'Bilinmeyen hata'}`);
+    } finally {
+      setIsGdriveSyncing(false);
+    }
+  };
+
+  const handleDownloadGoogleDrive = async () => {
+    setIsGdriveSyncing(true);
+    try {
+      const res = await fetchFromGoogleDrive();
+      if (!res) {
+        showFeedback('error', 'Google Drive üzerinde henüz BizimKasa yedeği bulunamadı.');
+        return;
+      }
+
+      if (res.isEncrypted) {
+        // Buluttaki dosya şifreli: PIN sormak için şifre çözme modalını aç
+        setEncryptedBackupData({
+          ...res.fileData,
+          lastModifiedAt: res.lastModifiedAt
+        });
+        setImportPassword('');
+        setDecryptError(null);
+        setIsDecryptModalOpen(true);
+        return;
+      }
+
+      // Şifresiz dosya ise standart tarih kontrolü ve onay
+      const fileDate = res.lastModifiedAt;
+      const comparison = compareTimestamps(fileDate, lastModifiedAt);
+      const isOlder = comparison === 'older';
+
+      const dialogMessage = (
+        <div className="space-y-3 pt-1">
+          <div className="p-3 rounded-xl bg-slate-900/90 border border-white/10 space-y-2 text-xs">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-400">☁️ Google Drive Yedeği:</span>
+              <span className="text-white font-mono font-medium text-right">{formatFullDateTime(fileDate)}</span>
+            </div>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-400">💻 Bu Cihazdaki Veriler:</span>
+              <span className="text-white font-mono font-medium text-right">{formatFullDateTime(lastModifiedAt)}</span>
+            </div>
+          </div>
+
+          {comparison === 'newer' && (
+            <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 font-medium flex items-center gap-2">
+              <Check className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span>Google Drive'daki yedek, bu cihazdaki son işlemden daha <strong>GÜNCEL</strong>.</span>
+            </div>
+          )}
+
+          {comparison === 'older' && (
+            <div className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-xs text-rose-300 font-medium flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+              <span>
+                <strong>DİKKAT:</strong> Google Drive'daki yedek, bu cihazdaki son değişiklikten <strong>DAHA ESKİ</strong>! Yüklerseniz bu cihazdaki yeni işlemleriniz silinecektir.
+              </span>
+            </div>
+          )}
+
+          {comparison === 'equal' && (
+            <div className="p-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-xs text-blue-300 font-medium flex items-center gap-2">
+              <Info className="w-4 h-4 shrink-0 text-blue-400" />
+              <span>Google Drive'daki yedek ile bu cihazdaki veriler <strong>aynı tarihe</strong> sahip.</span>
+            </div>
+          )}
+
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Mevcut tüm veriler silinecek ve Google Drive'daki yedek yüklenecektir. Bu işlemi onaylıyor musunuz?
+          </p>
+        </div>
+      );
+
+      setConfirmState({
+        isOpen: true,
+        title: isOlder ? '⚠️ Eski Bulut Yedeği Uyarısı' : 'Google Drive’dan Geri Yükle',
+        message: dialogMessage,
+        confirmText: isOlder ? 'Yine de Yükle' : 'Yedeği Yükle',
+        isDestructive: true,
+        onConfirm: () => {
+          requirePinAuth(
+            'Bulut Yedeğini Geri Yükleme Onayı',
+            'Google Drive yedeğini bu cihaza geri yüklemek için lütfen PIN kodunuzu girin.',
+            async () => {
+              const r = await restorePlainBackup(res.fileData);
+              if (r.success) {
+                showFeedback('success', 'Google Drive yedeği başarıyla geri yüklendi!');
+                setTimeout(() => window.location.reload(), 800);
+              } else {
+                showFeedback('error', r.message);
+              }
+            },
+            { confirmButtonText: 'Yükle', isDestructive: true }
+          );
+        }
+      });
+    } catch (err: any) {
+      showFeedback('error', `Buluttan yükleme hatası: ${err?.message || 'Bilinmeyen hata'}`);
+    } finally {
+      setIsGdriveSyncing(false);
+    }
   };
 
   const handleResetSample = () => {
@@ -633,11 +894,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* Biometrics (Face ID / Touch ID) */}
+        {/* Biometrics (Face ID / Touch ID / Windows Hello) */}
         <div className={`flex items-center justify-between py-3 border-b border-white/5 transition-opacity ${!settings.pinHash ? 'opacity-60' : ''}`}>
           <div className="flex items-center gap-3 min-w-0 pr-3">
             <div className={`p-2 rounded-xl shrink-0 transition-colors ${
-              settings.biometricsEnabled 
+              isBioActive 
                 ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
                 : settings.pinHash 
                   ? 'bg-slate-800 text-slate-300 border border-white/5' 
@@ -647,7 +908,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-white block">Face ID / Parmak İzi</span>
+                <span className="text-sm font-semibold text-white block">
+                  {isMobile ? 'Face ID / Parmak İzi' : 'Geçiş Anahtarı / Windows Hello'}
+                </span>
                 {!settings.pinHash && (
                   <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-semibold border border-amber-500/20 shrink-0">
                     PIN Gerekli
@@ -656,7 +919,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
               <span className="text-xs text-slate-400 block">
                 {settings.pinHash 
-                  ? 'Cihaz biyometrisi ile şifresiz anında açılış' 
+                  ? (isMobile ? 'Cihaz biyometrisi ile PIN girmeden anında açılış (Bu cihaza özel)' : 'Bu tarayıcıda Windows Hello / geçiş anahtarı ile giriş (Bu cihaza özel)')
                   : 'Etkinleştirebilmek için önce yukarıdan bir PIN kodu belirleyin'}
               </span>
               {typeof window !== 'undefined' && !window.isSecureContext && (
@@ -671,9 +934,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             type="button"
             onClick={handleToggleBiometrics}
             disabled={!settings.pinHash}
-            title={settings.pinHash ? 'Face ID / Biyometrik Kilidi Aç/Kapat' : 'Önce PIN kodu belirlemelisiniz'}
+            title={settings.pinHash ? 'Biyometrik Kilidi Aç/Kapat' : 'Önce PIN kodu belirlemelisiniz'}
             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-              settings.biometricsEnabled
+              isBioActive
                 ? 'bg-emerald-500'
                 : settings.pinHash
                   ? 'bg-slate-700 hover:bg-slate-600'
@@ -683,7 +946,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span
               aria-hidden="true"
               className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                settings.biometricsEnabled ? 'translate-x-5' : 'translate-x-0'
+                isBioActive ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
           </button>
@@ -831,6 +1094,181 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
         </div>
+      </div>
+
+      {/* SECTION 1.5: GOOGLE DRIVE CLOUD SYNC */}
+      <div className="rounded-3xl bg-slate-900/80 border border-emerald-500/20 p-5 space-y-4 shadow-lg shadow-emerald-950/20">
+        <div className="flex items-center justify-between pb-2 border-b border-white/10">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+              <Cloud className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">Google Drive ile Bulut Eşitleme</h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Otomatik & Kolay
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">Telefon ve bilgisayarınız arasında tek tıkla zahmetsiz senkronizasyon</p>
+            </div>
+          </div>
+
+          {isGdriveConnected && (
+            <button
+              onClick={handleDisconnectGoogleDrive}
+              title="Google Drive Bağlantısını Kes"
+              className="p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 text-xs transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Bağlantı Durumu & Kontroller */}
+        {!isGdriveConnected ? (
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800/60 to-slate-900 border border-white/10 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 shrink-0 mt-0.5">
+                <Info className="w-4 h-4" />
+              </div>
+              <div className="space-y-1 text-xs leading-relaxed text-slate-300">
+                <span className="font-semibold text-white block">Dosya İndir/Yükle Derdine Son</span>
+                Google hesabınızı bağlayarak PC ve telefonunuzdaki BizimKasa verilerini doğrudan Google Drive özel alanınızla eşitleyebilirsiniz.
+                <span className="block text-[11px] text-slate-400 pt-1">
+                  🛡️ <strong>Sıfır Risk:</strong> Uygulama kişisel Drive dosyalarınıza ASLA erişemez; yalnızca kendi özel gizli yedek alanını kullanır.
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <button
+                onClick={handleConnectGoogleDrive}
+                disabled={isGdriveSyncing}
+                className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer disabled:opacity-50"
+              >
+                <Cloud className="w-4 h-4" />
+                <span>{isGdriveSyncing ? 'Bağlanılıyor...' : 'Google Drive ile Bağlan'}</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Connected Info Bar */}
+            <div className="p-3 rounded-2xl bg-slate-950/70 border border-emerald-500/30 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-slate-300 font-medium">Bağlı Hesap:</span>
+                <span className="text-emerald-300 font-semibold">{gdriveEmail || 'Google Hesabı Bağlandı'}</span>
+              </div>
+              <span className="text-[10px] text-slate-500 font-mono">AppData Korumalı</span>
+            </div>
+
+            {/* Encryption status info */}
+            <div className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/5 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div>
+                  <span className="text-emerald-300 font-bold block">
+                    PIN Korumalı AES-256 Şifreleme
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Verileriniz Google Drive'a gönderilirken PIN kodunuzla askeri düzeyde şifrelenir
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Auto-Sync Toggle Card */}
+            <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-white/5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 pr-2">
+                  <div className={`p-2 rounded-xl transition-colors ${
+                    settings.autoSyncGoogleDrive 
+                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
+                      : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    <RefreshCw className={`w-4 h-4 ${isGdriveSyncing ? 'animate-spin text-emerald-400' : ''}`} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-white block">Otomatik Eşitleme (Tam Senkronizasyon)</span>
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                        settings.autoSyncGoogleDrive 
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                          : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {settings.autoSyncGoogleDrive ? 'Açık' : 'Kapalı'}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-400 block mt-0.5">
+                      Verileriniz değiştikçe arka planda otomatik yükler; diğer cihazınızdaki yeni verileri otomatik çeker
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleToggleAutoSync}
+                  disabled={isGdriveSyncing}
+                  title="Otomatik Eşitlemeyi Aç/Kapat"
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    settings.autoSyncGoogleDrive ? 'bg-emerald-500' : 'bg-slate-700 hover:bg-slate-600'
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                      settings.autoSyncGoogleDrive ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {lastSyncTime && (
+                <div className="px-3 py-1.5 rounded-xl bg-slate-950/60 border border-white/5 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400">Son Bulut Eşitlemesi:</span>
+                  <span className="text-emerald-400 font-mono font-semibold">{formatLastModified(lastSyncTime)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Sync Action Buttons */}
+            <div className="space-y-2.5">
+              {/* Şimdi Eşitle (Auto-Sync trigger) */}
+              <button
+                onClick={handleSyncNow}
+                disabled={isGdriveSyncing}
+                className="w-full flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isGdriveSyncing ? 'animate-spin' : ''}`} />
+                <span>{isGdriveSyncing ? 'Eşitleniyor...' : 'Şimdi Eşitle (Bulutla Senkronize Et)'}</span>
+              </button>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* Buluta Gönder (Upload) */}
+                <button
+                  onClick={handleUploadGoogleDrive}
+                  disabled={isGdriveSyncing}
+                  className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-white text-xs font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                >
+                  <CloudUpload className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Buluta Gönder (PIN Korumalı)</span>
+                </button>
+
+                {/* Buluttan Al (Download) */}
+                <button
+                  onClick={handleDownloadGoogleDrive}
+                  disabled={isGdriveSyncing}
+                  className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-white text-xs font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                >
+                  <CloudDownload className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Buluttan Al (Geri Yükle)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SECTION 2: BACKUP & RESTORE */}
@@ -1182,6 +1620,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Step-Up PIN Authorization Modal */}
       <Modal
         isOpen={!!pinAuthRequest}
+        zIndex="z-[70]"
         onClose={() => {
           setPinAuthRequest(null);
           setPinAuthInput('');
@@ -1436,6 +1875,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       </Modal>
+
 
       {/* Confirm Dialog */}
       <ConfirmDialog
