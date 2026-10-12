@@ -4,7 +4,12 @@ import { db, getLastModifiedTimestamp, onDatabaseModified, cleanupExpiredTombsto
 import { seedInitialDataIfNeeded, forceResetWithDummyData } from './db/seed';
 import { fetchLiveRatesMultiSource, cleanupDeprecatedRates, cleanupDuplicateAssetAccounts, syncTefasFundRatesWithAssets } from './services/ratesService';
 import { getSettings, updateSettings, setSessionPin } from './services/securityService';
-import { syncWithGoogleDrive } from './services/googleDriveService';
+import { 
+  syncWithGoogleDrive, 
+  requestGoogleAccessTokenSilently, 
+  isGoogleDriveConfigured, 
+  isGoogleDriveTokenValid 
+} from './services/googleDriveService';
 import { Navbar } from './components/common/Navbar';
 import { BottomNav, type TabType } from './components/common/BottomNav';
 import { LockScreen } from './components/auth/LockScreen';
@@ -244,6 +249,23 @@ export const App: React.FC = () => {
       if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
     };
   }, [settings.autoSyncGoogleDrive, isLocked]);
+
+  // Google Drive oturumunu uygulama açıkken süresi dolmadan sessizce tazelemeyi dene
+  useEffect(() => {
+    if (!settings.autoSyncGoogleDrive) return;
+
+    const interval = setInterval(async () => {
+      if (isGoogleDriveConfigured() && !isGoogleDriveTokenValid()) {
+        try {
+          await requestGoogleAccessTokenSilently();
+        } catch {
+          // Sessiz yenileme yapılamazsa kullanıcıyı rahatsız etme
+        }
+      }
+    }, 5 * 60 * 1000); // 5 dakikada bir kontrol
+
+    return () => clearInterval(interval);
+  }, [settings.autoSyncGoogleDrive]);
 
   const handleUpdateSettings = async (newSettings: Partial<AppSettings>) => {
     await updateSettings(newSettings);

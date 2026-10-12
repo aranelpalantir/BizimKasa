@@ -29,12 +29,13 @@ import {
 import {
   requestGoogleAccessToken,
   disconnectGoogleDrive,
-  getStoredAccessToken,
   getConnectedUserEmail,
   uploadToGoogleDrive,
   fetchFromGoogleDrive,
   syncWithGoogleDrive,
-  getLastSyncTime
+  getLastSyncTime,
+  isGoogleDriveConfigured,
+  isGoogleDriveTokenValid
 } from '../../services/googleDriveService';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -128,10 +129,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isDecrypting, setIsDecrypting] = useState(false);
 
   // Google Drive Sync state
-  const [isGdriveConnected, setIsGdriveConnected] = useState(Boolean(getStoredAccessToken()));
+  const [isGdriveConfigured, setIsGdriveConfigured] = useState(isGoogleDriveConfigured());
+  const [isTokenActive, setIsTokenActive] = useState(isGoogleDriveTokenValid());
   const [gdriveEmail, setGdriveEmail] = useState<string | null>(getConnectedUserEmail());
   const [isGdriveSyncing, setIsGdriveSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTimeState] = useState<string | null>(getLastSyncTime());
+
+  // Google Drive durumunu odaklanma ve sekme görünürlüğünde tazele
+  useEffect(() => {
+    const refreshGdriveState = () => {
+      setIsGdriveConfigured(isGoogleDriveConfigured());
+      setIsTokenActive(isGoogleDriveTokenValid());
+      setGdriveEmail(getConnectedUserEmail());
+      setLastSyncTimeState(getLastSyncTime());
+    };
+    window.addEventListener('focus', refreshGdriveState);
+    document.addEventListener('visibilitychange', refreshGdriveState);
+    return () => {
+      window.removeEventListener('focus', refreshGdriveState);
+      document.removeEventListener('visibilitychange', refreshGdriveState);
+    };
+  }, []);
 
   // Version and Cache Refresh state
   const [isRefreshingCache, setIsRefreshingCache] = useState(false);
@@ -599,8 +617,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleSyncNow = async () => {
     setIsGdriveSyncing(true);
     try {
+      if (!isGoogleDriveTokenValid()) {
+        await requestGoogleAccessToken(false);
+        setIsTokenActive(true);
+        setGdriveEmail(getConnectedUserEmail());
+      }
       const res = await syncWithGoogleDrive();
       setLastSyncTimeState(getLastSyncTime());
+      setIsTokenActive(isGoogleDriveTokenValid());
       if (res.action === 'downloaded') {
         showFeedback('success', 'Buluttan yeni veriler alındı, yenileniyor...');
         setTimeout(() => window.location.reload(), 500);
@@ -627,7 +651,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setIsGdriveSyncing(true);
     try {
       await requestGoogleAccessToken(true);
-      setIsGdriveConnected(true);
+      setIsGdriveConfigured(true);
+      setIsTokenActive(true);
       setGdriveEmail(getConnectedUserEmail());
       showFeedback('success', 'Google Drive başarıyla bağlandı!');
     } catch (err: any) {
@@ -637,9 +662,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const handleRefreshGoogleSession = async () => {
+    setIsGdriveSyncing(true);
+    try {
+      await requestGoogleAccessToken(false);
+      setIsTokenActive(true);
+      setGdriveEmail(getConnectedUserEmail());
+      showFeedback('success', 'Google oturumu başarıyla yenilendi!');
+    } catch (err: any) {
+      showFeedback('error', err?.message || 'Google oturumu yenilenemedi.');
+    } finally {
+      setIsGdriveSyncing(false);
+    }
+  };
+
   const handleDisconnectGoogleDrive = () => {
     disconnectGoogleDrive();
-    setIsGdriveConnected(false);
+    setIsGdriveConfigured(false);
+    setIsTokenActive(false);
     setGdriveEmail(null);
     showFeedback('success', 'Google Drive bağlantısı kaldırıldı.');
   };
@@ -671,8 +711,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const executeUploadToDrive = async (pin?: string) => {
     setIsGdriveSyncing(true);
     try {
+      if (!isGoogleDriveTokenValid()) {
+        await requestGoogleAccessToken(false);
+        setIsTokenActive(true);
+        setGdriveEmail(getConnectedUserEmail());
+      }
       const res = await uploadToGoogleDrive(pin);
       setLastSyncTimeState(res.modifiedTime);
+      setIsTokenActive(isGoogleDriveTokenValid());
       showFeedback('success', 'Verileriniz PIN kodunuz ile şifrelenerek Google Drive’a başarıyla yüklendi!');
     } catch (err: any) {
       showFeedback('error', `Eşitleme başarısız: ${err?.message || 'Bilinmeyen hata'}`);
@@ -684,7 +730,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleDownloadGoogleDrive = async () => {
     setIsGdriveSyncing(true);
     try {
+      if (!isGoogleDriveTokenValid()) {
+        await requestGoogleAccessToken(false);
+        setIsTokenActive(true);
+        setGdriveEmail(getConnectedUserEmail());
+      }
       const res = await fetchFromGoogleDrive();
+      setIsTokenActive(isGoogleDriveTokenValid());
       if (!res) {
         showFeedback('error', 'Google Drive üzerinde henüz BizimKasa yedeği bulunamadı.');
         return;
@@ -1114,7 +1166,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
 
-          {isGdriveConnected && (
+          {isGdriveConfigured && (
             <button
               onClick={handleDisconnectGoogleDrive}
               title="Google Drive Bağlantısını Kes"
@@ -1126,7 +1178,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {/* Bağlantı Durumu & Kontroller */}
-        {!isGdriveConnected ? (
+        {!isGdriveConfigured ? (
           <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800/60 to-slate-900 border border-white/10 space-y-3">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 shrink-0 mt-0.5">
@@ -1154,15 +1206,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         ) : (
           <div className="space-y-3">
-            {/* Connected Info Bar */}
-            <div className="p-3 rounded-2xl bg-slate-950/70 border border-emerald-500/30 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-slate-300 font-medium">Bağlı Hesap:</span>
-                <span className="text-emerald-300 font-semibold">{gdriveEmail || 'Google Hesabı Bağlandı'}</span>
+            {/* Connected / Token Status Bar */}
+            {isTokenActive ? (
+              <div className="p-3 rounded-2xl bg-slate-950/70 border border-emerald-500/30 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-slate-300 font-medium">Bağlı Hesap:</span>
+                  <span className="text-emerald-300 font-semibold">{gdriveEmail || 'Google Hesabı Bağlandı'}</span>
+                </div>
+                <span className="text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  Aktif
+                </span>
               </div>
-              <span className="text-[10px] text-slate-500 font-mono">AppData Korumalı</span>
-            </div>
+            ) : (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                    <span className="text-slate-300 font-medium">Bağlı Hesap:</span>
+                    <span className="text-amber-300 font-semibold">{gdriveEmail || 'Google Hesabı'}</span>
+                  </div>
+                  <span className="text-[10px] text-amber-300 font-medium bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30">
+                    Oturum Süresi Doldu
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-amber-500/15">
+                  <p className="text-[11px] text-slate-400 leading-snug">
+                    Google güvenlik kuralı gereği 1 saatlik erişim anahtarı doldu. Eşitlemeye devam etmek için oturumu yenileyin.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRefreshGoogleSession}
+                    disabled={isGdriveSyncing}
+                    className="shrink-0 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-sm active:scale-95 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isGdriveSyncing ? 'animate-spin' : ''}`} />
+                    <span>Oturumu Yenile</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Encryption status info */}
             <div className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/5 flex items-center justify-between text-xs">

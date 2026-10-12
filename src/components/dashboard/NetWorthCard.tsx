@@ -20,7 +20,7 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({
 
   return (
     <div 
-      className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 p-6 border shadow-2xl transition-all duration-300"
+      className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 p-5 sm:p-6 border shadow-2xl transition-all duration-300"
       style={{
         borderColor: themeColor ? `${themeColor}40` : 'rgba(255, 255, 255, 0.1)',
         boxShadow: themeColor ? `0 15px 35px -10px ${themeColor}25` : undefined
@@ -84,7 +84,7 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({
           <div>
             <span className="text-slate-400">Net Kâr / Zarar: </span>
             <span className={`font-semibold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {isProfit ? '+' : ''}{formatTRY(summary.profitLossTRY, hideValues)}
+              {!hideValues && isProfit ? '+' : ''}{formatTRY(summary.profitLossTRY, hideValues)}
             </span>
           </div>
 

@@ -3,6 +3,7 @@ import {
   TrendingUp, 
   ArrowDownLeft, 
   ArrowUpRight, 
+  ArrowDownRight,
   ChevronLeft, 
   ChevronRight, 
   RotateCcw, 
@@ -60,7 +61,7 @@ export const MonthlyCashFlowHeroCard: React.FC<MonthlyCashFlowHeroCardProps> = (
 
   return (
     <div 
-      className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 p-6 border shadow-2xl transition-all duration-300 flex flex-col justify-between"
+      className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 p-5 sm:p-6 border shadow-2xl transition-all duration-300 flex flex-col justify-between"
       style={{
         borderColor: themeColor ? `${themeColor}40` : 'rgba(255, 255, 255, 0.1)',
         boxShadow: themeColor ? `0 15px 35px -10px ${themeColor}25` : undefined
@@ -139,47 +140,48 @@ export const MonthlyCashFlowHeroCard: React.FC<MonthlyCashFlowHeroCardProps> = (
         </div>
 
         {/* Main Big Number: Net Remaining / Cash Surplus */}
-        <div className="flex items-baseline justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className={`text-3xl sm:text-4xl font-extrabold tracking-tight font-mono ${
-                remaining > 0 ? 'text-emerald-400' : remaining < 0 ? 'text-rose-400' : 'text-white'
-              }`}>
-                {remaining > 0 ? '+' : ''}{formatTRY(remaining, hideValues)}
-              </h2>
-            </div>
-            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
-              <span>{remaining >= 0 ? 'Net Tasarruf / Kalan' : 'Aylık Bütçe Açığı'}</span>
+        <div>
+          <h2 className={`text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight font-mono whitespace-nowrap ${
+            remaining > 0 ? 'text-emerald-400' : remaining < 0 ? 'text-rose-400' : 'text-white'
+          }`}>
+            {!hideValues && remaining > 0 ? '+' : ''}{formatTRY(remaining, hideValues)}
+          </h2>
+
+          <div className="flex items-center justify-between gap-2 mt-1.5">
+            <p className="text-xs text-slate-400 flex items-center gap-1.5 min-w-0">
+              <span className="truncate">{remaining >= 0 ? 'Net Tasarruf / Kalan' : 'Aylık Bütçe Açığı'}</span>
               {income > 0 && (
-                <span className="text-slate-500 font-mono">
+                <span className="text-slate-500 font-mono hidden sm:inline shrink-0">
                   (Gelirin %{formatNumber(Math.abs(savingsRate), 0)}'si)
                 </span>
               )}
             </p>
-          </div>
 
-          {/* Performance Pill */}
-          <div className="shrink-0">
-            {income > 0 ? (
-              <div className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
-                isSurplus
-                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
-                  : 'bg-rose-500/15 text-rose-400 border border-rose-500/25'
-              }`}>
-                {isSurplus ? <PiggyBank className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
-                <span>
-                  {isSurplus ? `+%{${formatNumber(savingsRate, 0)}} Tasarruf` : `-%{${formatNumber(Math.abs(savingsRate), 0)}} Açık`}
-                </span>
-              </div>
-            ) : expense > 0 ? (
-              <div className="text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/25">
-                Gider Kaydı
-              </div>
-            ) : (
-              <div className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 border border-white/5">
-                Kayıt Yok
-              </div>
-            )}
+            {/* Performance Pill */}
+            <div className="shrink-0">
+              {income > 0 ? (
+                <div className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                  isSurplus
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
+                    : 'bg-rose-500/15 text-rose-400 border border-rose-500/25'
+                }`}>
+                  {isSurplus ? <PiggyBank className="w-3.5 h-3.5 shrink-0" /> : <ArrowDownRight className="w-3.5 h-3.5 shrink-0" />}
+                  <span className="whitespace-nowrap">
+                    {isSurplus 
+                      ? (savingsRate > 0 ? `+%${formatNumber(savingsRate, 0)} Tasarruf` : `%0 Tasarruf`) 
+                      : `-%${formatNumber(Math.abs(savingsRate), 0)} Açık`}
+                  </span>
+                </div>
+              ) : expense > 0 ? (
+                <div className="text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/25 whitespace-nowrap">
+                  Gider Kaydı
+                </div>
+              ) : (
+                <div className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 border border-white/5 whitespace-nowrap">
+                  Kayıt Yok
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

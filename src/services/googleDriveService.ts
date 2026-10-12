@@ -88,14 +88,26 @@ export function saveAccessToken(token: string, expiresInSec: number) {
   localStorage.setItem(STORAGE_KEY_TOKEN_EXP, expTime.toString());
 }
 
-export function disconnectGoogleDrive() {
+export function clearStoredToken(): void {
   localStorage.removeItem(STORAGE_KEY_TOKEN);
   localStorage.removeItem(STORAGE_KEY_TOKEN_EXP);
+}
+
+export function disconnectGoogleDrive(): void {
+  clearStoredToken();
   localStorage.removeItem(STORAGE_KEY_USER_EMAIL);
 }
 
 export function getConnectedUserEmail(): string | null {
   return localStorage.getItem(STORAGE_KEY_USER_EMAIL);
+}
+
+export function isGoogleDriveConfigured(): boolean {
+  return Boolean(localStorage.getItem(STORAGE_KEY_USER_EMAIL));
+}
+
+export function isGoogleDriveTokenValid(): boolean {
+  return Boolean(getStoredAccessToken());
 }
 
 // 4. Token Talep Etme (Oturum Açma)
@@ -114,12 +126,15 @@ export async function requestGoogleAccessToken(promptConsent = false): Promise<s
 
   return new Promise((resolve, reject) => {
     try {
+      const userEmail = getConnectedUserEmail();
       const tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: GDRIVE_SCOPE,
         prompt: promptConsent ? 'consent' : '',
+        hint: userEmail || undefined,
         callback: async (response: any) => {
           if (response.error) {
+            clearStoredToken();
             reject(new Error(`Google yetkilendirme hatası: ${response.error_description || response.error}`));
             return;
           }
@@ -146,9 +161,82 @@ export async function requestGoogleAccessToken(promptConsent = false): Promise<s
         }
       });
 
-      tokenClient.requestAccessToken({ prompt: promptConsent ? 'consent' : '' });
+      tokenClient.requestAccessToken({ 
+        prompt: promptConsent ? 'consent' : '',
+        hint: userEmail || undefined 
+      });
     } catch (err: any) {
       reject(new Error(`Google oturum başlatılamadı: ${err?.message || err}`));
+    }
+  });
+}
+
+// 4.1. Sessiz ve Otomatik Token Yenileme (prompt: 'none')
+export async function requestGoogleAccessTokenSilently(): Promise<string> {
+  const existingToken = getStoredAccessToken();
+  if (existingToken) {
+    return existingToken;
+  }
+
+  const clientId = getStoredClientId();
+  const userEmail = getConnectedUserEmail();
+  if (!clientId || !userEmail) {
+    throw new Error('Google hesabı yapılandırılmamış.');
+  }
+
+  await loadGsiScript();
+
+  return new Promise((resolve, reject) => {
+    let timeoutId: any = null;
+    let isSettled = false;
+
+    const cleanup = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+
+    try {
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: GDRIVE_SCOPE,
+        prompt: 'none',
+        hint: userEmail,
+        callback: async (response: any) => {
+          if (isSettled) return;
+          isSettled = true;
+          cleanup();
+
+          if (response.error) {
+            reject(new Error(`Sessiz yenileme başarısız: ${response.error_description || response.error}`));
+            return;
+          }
+
+          if (response.access_token) {
+            saveAccessToken(response.access_token, response.expires_in || 3599);
+            resolve(response.access_token);
+          } else {
+            reject(new Error('Erişim anahtarı alınamadı.'));
+          }
+        },
+        error_callback: (err: any) => {
+          if (isSettled) return;
+          isSettled = true;
+          cleanup();
+          reject(new Error(`Sessiz yenileme engellendi: ${err?.message || err}`));
+        }
+      });
+
+      // 5 saniye içinde sessiz yanıt gelmezse askıda kalmasın
+      timeoutId = setTimeout(() => {
+        if (!isSettled) {
+          isSettled = true;
+          reject(new Error('Sessiz yenileme zaman aşımına uğradı.'));
+        }
+      }, 5000);
+
+      tokenClient.requestAccessToken({ prompt: 'none', hint: userEmail });
+    } catch (err: any) {
+      cleanup();
+      reject(new Error(`Sessiz oturum başlatılamadı: ${err?.message || err}`));
     }
   });
 }
@@ -161,8 +249,8 @@ async function findSyncFile(accessToken: string): Promise<{ id: string; modified
   });
   if (!res.ok) {
     if (res.status === 401) {
-      disconnectGoogleDrive();
-      throw new Error('Google oturum süresi doldu. Lütfen tekrar bağlanın.');
+      clearStoredToken();
+      throw new Error('Google oturum süresi doldu. Lütfen oturumu yenileyin.');
     }
     throw new Error(`Google Drive dosyası aranamadı (${res.status})`);
   }
@@ -241,6 +329,10 @@ export async function uploadToGoogleDrive(password?: string): Promise<{ success:
     });
 
     if (!res.ok) {
+      if (res.status === 401) {
+        clearStoredToken();
+        throw new Error('Google oturum süresi doldu. Lütfen oturumu yenileyin.');
+      }
       throw new Error(`Drive güncelleme başarısız (${res.status}): ${await res.text()}`);
     }
     const updated = await res.json();
@@ -276,6 +368,10 @@ export async function uploadToGoogleDrive(password?: string): Promise<{ success:
     });
 
     if (!res.ok) {
+      if (res.status === 401) {
+        clearStoredToken();
+        throw new Error('Google oturum süresi doldu. Lütfen oturumu yenileyin.');
+      }
       throw new Error(`Drive dosyası oluşturulamadı (${res.status}): ${await res.text()}`);
     }
     const created = await res.json();
@@ -302,6 +398,10 @@ export async function fetchFromGoogleDrive(): Promise<{
   });
 
   if (!res.ok) {
+    if (res.status === 401) {
+      clearStoredToken();
+      throw new Error('Google oturum süresi doldu. Lütfen oturumu yenileyin.');
+    }
     throw new Error(`Drive verisi indirilemedi (${res.status})`);
   }
 
@@ -364,9 +464,19 @@ export async function syncWithGoogleDrive(explicitPin?: string): Promise<AutoSyn
     return { action: 'none', message: 'Eşitleme zaten devam ediyor.' };
   }
 
-  const token = getStoredAccessToken();
+  let token = getStoredAccessToken();
   if (!token) {
-    return { action: 'none', message: 'Google Drive bağlı değil.' };
+    if (!isGoogleDriveConfigured()) {
+      return { action: 'none', message: 'Google Drive bağlı değil.' };
+    }
+    try {
+      token = await requestGoogleAccessTokenSilently();
+    } catch {
+      return { 
+        action: 'none', 
+        message: 'Google oturum süresi doldu. Lütfen Ayarlar sayfasından oturumu yenileyin.' 
+      };
+    }
   }
 
   isSyncInProgress = true;
