@@ -15,12 +15,13 @@ declare global {
   }
 }
 
-const GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email email';
 const SYNC_FILE_NAME = 'bizimkasa-sync.json';
 const STORAGE_KEY_TOKEN = 'bizimkasa_gdrive_token';
 const STORAGE_KEY_TOKEN_EXP = 'bizimkasa_gdrive_token_exp';
 const STORAGE_KEY_CLIENT_ID = 'bizimkasa_gdrive_client_id';
 const STORAGE_KEY_USER_EMAIL = 'bizimkasa_gdrive_user_email';
+const STORAGE_KEY_CONNECTED = 'bizimkasa_gdrive_connected';
 
 export interface GDriveSyncStatus {
   isConnected: boolean;
@@ -86,6 +87,7 @@ export function saveAccessToken(token: string, expiresInSec: number) {
   const expTime = Date.now() + expiresInSec * 1000;
   localStorage.setItem(STORAGE_KEY_TOKEN, token);
   localStorage.setItem(STORAGE_KEY_TOKEN_EXP, expTime.toString());
+  localStorage.setItem(STORAGE_KEY_CONNECTED, 'true');
 }
 
 export function clearStoredToken(): void {
@@ -95,15 +97,18 @@ export function clearStoredToken(): void {
 
 export function disconnectGoogleDrive(): void {
   clearStoredToken();
+  localStorage.removeItem(STORAGE_KEY_CONNECTED);
   localStorage.removeItem(STORAGE_KEY_USER_EMAIL);
 }
 
 export function getConnectedUserEmail(): string | null {
-  return localStorage.getItem(STORAGE_KEY_USER_EMAIL);
+  return localStorage.getItem(STORAGE_KEY_USER_EMAIL) || (isGoogleDriveConfigured() ? 'Google Hesabı' : null);
 }
 
 export function isGoogleDriveConfigured(): boolean {
-  return Boolean(localStorage.getItem(STORAGE_KEY_USER_EMAIL));
+  return localStorage.getItem(STORAGE_KEY_CONNECTED) === 'true' || 
+         Boolean(localStorage.getItem(STORAGE_KEY_USER_EMAIL)) || 
+         Boolean(localStorage.getItem(STORAGE_KEY_TOKEN));
 }
 
 export function isGoogleDriveTokenValid(): boolean {
@@ -127,14 +132,17 @@ export async function requestGoogleAccessToken(promptConsent = false): Promise<s
   return new Promise((resolve, reject) => {
     try {
       const userEmail = getConnectedUserEmail();
+      const emailHint = userEmail && userEmail.includes('@') ? userEmail : undefined;
       const tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: GDRIVE_SCOPE,
         prompt: promptConsent ? 'consent' : '',
-        hint: userEmail || undefined,
+        hint: emailHint,
         callback: async (response: any) => {
           if (response.error) {
-            clearStoredToken();
+            if (!getStoredAccessToken()) {
+              clearStoredToken();
+            }
             reject(new Error(`Google yetkilendirme hatası: ${response.error_description || response.error}`));
             return;
           }
@@ -154,6 +162,9 @@ export async function requestGoogleAccessToken(promptConsent = false): Promise<s
             } catch {
               // Profil bilgisi alınamazsa eşitlemeyi engelleme
             }
+            if (!localStorage.getItem(STORAGE_KEY_USER_EMAIL)) {
+              localStorage.setItem(STORAGE_KEY_USER_EMAIL, 'Google Hesabı Bağlandı');
+            }
             resolve(response.access_token);
           } else {
             reject(new Error('Erişim belirteci alınamadı.'));
@@ -163,7 +174,7 @@ export async function requestGoogleAccessToken(promptConsent = false): Promise<s
 
       tokenClient.requestAccessToken({ 
         prompt: promptConsent ? 'consent' : '',
-        hint: userEmail || undefined 
+        hint: emailHint 
       });
     } catch (err: any) {
       reject(new Error(`Google oturum başlatılamadı: ${err?.message || err}`));
@@ -179,10 +190,12 @@ export async function requestGoogleAccessTokenSilently(): Promise<string> {
   }
 
   const clientId = getStoredClientId();
-  const userEmail = getConnectedUserEmail();
-  if (!clientId || !userEmail) {
+  if (!clientId || !isGoogleDriveConfigured()) {
     throw new Error('Google hesabı yapılandırılmamış.');
   }
+
+  const userEmail = getConnectedUserEmail();
+  const emailHint = userEmail && userEmail.includes('@') ? userEmail : undefined;
 
   await loadGsiScript();
 
@@ -199,7 +212,7 @@ export async function requestGoogleAccessTokenSilently(): Promise<string> {
         client_id: clientId,
         scope: GDRIVE_SCOPE,
         prompt: 'none',
-        hint: userEmail,
+        hint: emailHint,
         callback: async (response: any) => {
           if (isSettled) return;
           isSettled = true;
@@ -233,7 +246,7 @@ export async function requestGoogleAccessTokenSilently(): Promise<string> {
         }
       }, 5000);
 
-      tokenClient.requestAccessToken({ prompt: 'none', hint: userEmail });
+      tokenClient.requestAccessToken({ prompt: 'none', hint: emailHint });
     } catch (err: any) {
       cleanup();
       reject(new Error(`Sessiz oturum başlatılamadı: ${err?.message || err}`));
