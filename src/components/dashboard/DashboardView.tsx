@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { NetWorthCard } from './NetWorthCard';
 import { MonthlyCashFlowHeroCard } from './MonthlyCashFlowHeroCard';
 import { MonthlyExpenseBreakdownCard } from './MonthlyExpenseBreakdownCard';
@@ -10,15 +10,7 @@ import { GroupFilterBar } from '../common/GroupFilterBar';
 import { AddAccountModal } from '../common/AddAccountModal';
 import { EditAccountModal } from '../common/EditAccountModal';
 import { calculatePortfolioSummary, formatTRY, formatNumber } from '../../services/portfolioService';
-import { Coins, Euro, LineChart, Users, Plus, Wallet, Palette, Clock, Cloud } from 'lucide-react';
-import { 
-  isGoogleDriveConfigured, 
-  isGoogleDriveTokenValid, 
-  requestGoogleAccessToken, 
-  syncWithGoogleDrive,
-  getLastSyncTime 
-} from '../../services/googleDriveService';
-import { formatLastModified, formatFullDateTime } from '../../utils/dateUtils';
+import { Coins, Euro, LineChart, Users, Plus, Wallet, Palette } from 'lucide-react';
 import type { Account, AssetTransaction, MarketRate, CashFlowEntry, Group } from '../../types/finance';
 
 interface DashboardViewProps {
@@ -44,8 +36,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   rates,
   cashFlowEntries,
   hideValues,
-  onNavigateTab,
-  lastModifiedAt
+  onNavigateTab
 }) => {
   const currentDate = new Date();
   const [selectedYear, setSelectedYear] = useState<number>(2026);
@@ -53,45 +44,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [selectedGroupId, setSelectedGroupId] = useState<string>('ALL');
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
-
-  // Google Drive Cloud Sync quick renewal state
-  const [isCloudConfigured, setIsCloudConfigured] = useState(isGoogleDriveConfigured());
-  const [isCloudTokenValid, setIsCloudTokenValid] = useState(isGoogleDriveTokenValid());
-  const [lastSyncTime, setLastSyncTimeState] = useState<string | null>(getLastSyncTime());
-  const [isRenewingCloud, setIsRenewingCloud] = useState(false);
-
-  useEffect(() => {
-    const checkCloudState = () => {
-      setIsCloudConfigured(isGoogleDriveConfigured());
-      setIsCloudTokenValid(isGoogleDriveTokenValid());
-      setLastSyncTimeState(getLastSyncTime());
-    };
-    window.addEventListener('bizimkasa:sync_updated', checkCloudState);
-    window.addEventListener('focus', checkCloudState);
-    document.addEventListener('visibilitychange', checkCloudState);
-    return () => {
-      window.removeEventListener('bizimkasa:sync_updated', checkCloudState);
-      window.removeEventListener('focus', checkCloudState);
-      document.removeEventListener('visibilitychange', checkCloudState);
-    };
-  }, []);
-
-  const handleRenewCloudSession = async () => {
-    setIsRenewingCloud(true);
-    try {
-      await requestGoogleAccessToken(false);
-      setIsCloudTokenValid(true);
-      const res = await syncWithGoogleDrive();
-      setLastSyncTimeState(getLastSyncTime());
-      if (res.action === 'downloaded') {
-        setTimeout(() => window.location.reload(), 500);
-      }
-    } catch (err) {
-      console.warn('Dashboard üzerinden oturum yenileme hatası:', err);
-    } finally {
-      setIsRenewingCloud(false);
-    }
-  };
 
   const handlePrevMonth = () => {
     if (selectedMonth === 1) {
@@ -173,57 +125,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-5">
       {/* Live Market Rates Horizontal Ticker with Groups & 10-day history */}
       <RatesTicker rates={rates} />
-
-      {/* Local System Status & Last Modified Bar */}
-      {lastModifiedAt && (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-slate-900/60 border border-white/5 text-xs text-slate-400 shadow-sm select-none">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-slate-300 font-medium">Yerel Veri Durumu</span>
-          </div>
-
-          {/* Quick Cloud Renewal Pill: ONLY shown if Google Drive is configured but session expired */}
-          {isCloudConfigured && !isCloudTokenValid && (
-            <button
-              type="button"
-              onClick={handleRenewCloudSession}
-              disabled={isRenewingCloud}
-              title="Google Drive oturum süresi doldu. Tek tıkla yenileyin ve bulutla eşitleyin."
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50 shadow-sm"
-            >
-              <Cloud className={`w-3.5 h-3.5 ${isRenewingCloud ? 'animate-spin' : ''}`} />
-              <span>{isRenewingCloud ? 'Yenileniyor...' : 'Bulut Oturumunu Yenile'}</span>
-            </button>
-          )}
-
-          <div className="flex items-center flex-wrap gap-2.5 sm:gap-4">
-            {isCloudConfigured && (
-              <div 
-                title={lastSyncTime ? `Son Bulut Eşitlemesi: ${formatFullDateTime(lastSyncTime)}` : 'Bulut eşitlemesi aktif, henüz senkronize edilmedi'}
-                className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-default"
-              >
-                <Cloud className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-slate-400">Bulut:</span>
-                <span className="font-semibold text-emerald-400">
-                  {lastSyncTime ? formatLastModified(lastSyncTime) : 'Bekliyor'}
-                </span>
-              </div>
-            )}
-
-            <div 
-              title={`Sistemdeki Son Veri Değişikliği: ${formatFullDateTime(lastModifiedAt)}`}
-              className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-default"
-            >
-              <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="text-slate-400">Son Değişiklik:</span>
-              <span className="font-semibold text-amber-300">{formatLastModified(lastModifiedAt)}</span>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Onboarding Empty Banner when no accounts exist */}
       {groups.length === 0 && (

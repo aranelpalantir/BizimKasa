@@ -16,6 +16,7 @@ interface NavbarProps {
   isStandalone?: boolean;
   lastModifiedAt?: string;
   isCloudConfigured?: boolean;
+  isCloudTokenValid?: boolean;
   lastSyncTime?: string | null;
   onSyncCloud?: () => void;
   isSyncingCloud?: boolean;
@@ -32,6 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isStandalone,
   lastModifiedAt,
   isCloudConfigured,
+  isCloudTokenValid,
   lastSyncTime,
   onSyncCloud,
   isSyncingCloud
@@ -79,13 +81,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                     type="button"
                     onClick={onSyncCloud}
                     disabled={isSyncingCloud}
-                    title="Google Drive ile Şimdi Eşitle (Dokunun)"
-                    className="flex items-center gap-1 text-emerald-400 active:scale-95 transition-transform cursor-pointer disabled:opacity-50"
+                    title={isCloudTokenValid === false ? 'Google oturum süresi doldu. Dokunarak yenileyin.' : 'Google Drive ile Şimdi Eşitle (Dokunun)'}
+                    className={`flex items-center gap-1 active:scale-95 transition-transform cursor-pointer disabled:opacity-50 ${
+                      isCloudTokenValid === false ? 'text-amber-300' : 'text-emerald-400'
+                    }`}
                   >
-                    <Cloud className={`w-2.5 h-2.5 text-emerald-400 shrink-0 ${isSyncingCloud ? 'animate-pulse' : ''}`} />
+                    <Cloud className={`w-2.5 h-2.5 shrink-0 ${isSyncingCloud ? 'animate-pulse' : ''} ${
+                      isCloudTokenValid === false ? 'text-amber-400' : 'text-emerald-400'
+                    }`} />
                     <span className="text-slate-400 text-[9.5px]">Bulut:</span>
-                    <span className="text-emerald-400 font-semibold text-[9.5px]">
-                      {isSyncingCloud ? 'Eşitleniyor...' : (lastSyncTime ? formatMobileLastModified(lastSyncTime) : 'Eşitle')}
+                    <span className={`font-semibold text-[9.5px] ${isCloudTokenValid === false ? 'text-amber-300' : 'text-emerald-400'}`}>
+                      {isSyncingCloud 
+                        ? 'Eşitleniyor...' 
+                        : isCloudTokenValid === false 
+                          ? 'Yenile' 
+                          : (lastSyncTime ? formatMobileLastModified(lastSyncTime) : 'Eşitle')}
                     </span>
                   </button>
                 )}
@@ -105,16 +115,28 @@ export const Navbar: React.FC<NavbarProps> = ({
               title={
                 isSyncingCloud 
                   ? 'Bulutla eşitleniyor...' 
-                  : (lastSyncTime 
-                      ? `Son Bulut Eşitlemesi: ${formatFullDateTime(lastSyncTime)} • Tıklayarak Şimdi Eşitleyin` 
-                      : 'Bulut eşitlemesi aktif • Tıklayarak Şimdi Eşitleyin')
+                  : isCloudTokenValid === false
+                    ? 'Google Drive oturum süresi doldu. Tıklayarak oturumu yenileyin ve bulutla eşitleyin.'
+                    : (lastSyncTime 
+                        ? `Son Bulut Eşitlemesi: ${formatFullDateTime(lastSyncTime)} • Tıklayarak Şimdi Eşitleyin` 
+                        : 'Bulut eşitlemesi aktif • Tıklayarak Şimdi Eşitleyin')
               }
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-emerald-950/40 border border-emerald-500/30 hover:border-emerald-500/60 text-xs text-slate-300 hover:text-white transition-all shadow-sm select-none cursor-pointer active:scale-95 disabled:opacity-50 mr-0.5"
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-all shadow-sm select-none cursor-pointer active:scale-95 disabled:opacity-50 mr-0.5 ${
+                isCloudTokenValid === false
+                  ? 'bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 hover:text-white'
+                  : 'bg-slate-800/80 hover:bg-emerald-950/40 border border-emerald-500/30 hover:border-emerald-500/60 text-slate-300 hover:text-white'
+              }`}
             >
-              <Cloud className={`w-3.5 h-3.5 text-emerald-400 shrink-0 ${isSyncingCloud ? 'animate-spin' : ''}`} />
-              <span className="text-slate-400">Bulut:</span>
-              <span className="font-semibold text-emerald-400">
-                {isSyncingCloud ? 'Eşitleniyor...' : (lastSyncTime ? formatLastModified(lastSyncTime) : 'Eşitle')}
+              <Cloud className={`w-3.5 h-3.5 shrink-0 ${isSyncingCloud ? 'animate-spin' : ''} ${
+                isCloudTokenValid === false ? 'text-amber-400' : 'text-emerald-400'
+              }`} />
+              <span className={isCloudTokenValid === false ? 'text-amber-400/80' : 'text-slate-400'}>Bulut:</span>
+              <span className={`font-semibold ${isCloudTokenValid === false ? 'text-amber-300' : 'text-emerald-400'}`}>
+                {isSyncingCloud 
+                  ? 'Eşitleniyor...' 
+                  : isCloudTokenValid === false 
+                    ? 'Oturumu Yenile' 
+                    : (lastSyncTime ? formatLastModified(lastSyncTime) : 'Eşitle')}
               </span>
             </button>
           )}

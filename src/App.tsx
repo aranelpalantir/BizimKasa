@@ -53,12 +53,14 @@ export const App: React.FC = () => {
   const [isAutoSyncSubmitting, setIsAutoSyncSubmitting] = useState(false);
   const [lastSyncTime, setLastSyncTimeState] = useState<string | null>(getLastSyncTime());
   const [isCloudConfigured, setIsCloudConfigured] = useState(isGoogleDriveConfigured());
+  const [isCloudTokenValid, setIsCloudTokenValid] = useState(isGoogleDriveTokenValid());
 
   // Listen for sync updates and window focus to keep cloud sync status fresh
   useEffect(() => {
     const handleSyncUpdate = () => {
       setLastSyncTimeState(getLastSyncTime());
       setIsCloudConfigured(isGoogleDriveConfigured());
+      setIsCloudTokenValid(isGoogleDriveTokenValid());
     };
     window.addEventListener('bizimkasa:sync_updated', handleSyncUpdate);
     window.addEventListener('focus', handleSyncUpdate);
@@ -360,6 +362,7 @@ export const App: React.FC = () => {
         isStandalone={isStandalone}
         lastModifiedAt={lastModifiedAt}
         isCloudConfigured={isCloudConfigured}
+        isCloudTokenValid={isCloudTokenValid}
         lastSyncTime={lastSyncTime}
         onSyncCloud={handleManualCloudSync}
         isSyncingCloud={isCloudSyncing}
