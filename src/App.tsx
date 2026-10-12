@@ -50,6 +50,8 @@ export const App: React.FC = () => {
   const [isAutoSyncPromptModalOpen, setIsAutoSyncPromptModalOpen] = useState(false);
   const [autoSyncPinInput, setAutoSyncPinInput] = useState('');
   const [autoSyncPinError, setAutoSyncPinError] = useState<string | null>(null);
+  const [autoSyncPromptMessage, setAutoSyncPromptMessage] = useState<string>('');
+  const [autoSyncComparison, setAutoSyncComparison] = useState<'newer' | 'older' | 'equal' | 'unknown'>('older');
   const [isAutoSyncSubmitting, setIsAutoSyncSubmitting] = useState(false);
   const [lastSyncTime, setLastSyncTimeState] = useState<string | null>(getLastSyncTime());
   const [isCloudConfigured, setIsCloudConfigured] = useState(isGoogleDriveConfigured());
@@ -90,6 +92,8 @@ export const App: React.FC = () => {
       } else if (res.action === 'prompt_pin') {
         setAutoSyncPinInput('');
         setAutoSyncPinError(null);
+        setAutoSyncPromptMessage(res.message);
+        setAutoSyncComparison(res.comparison || 'older');
         setIsAutoSyncPromptModalOpen(true);
       }
     } catch (err) {
@@ -127,11 +131,15 @@ export const App: React.FC = () => {
         setSessionPin(autoSyncPinInput);
         setIsAutoSyncPromptModalOpen(false);
         setTimeout(() => window.location.reload(), 500);
+      } else if (res.action === 'uploaded') {
+        setSessionPin(autoSyncPinInput);
+        setIsAutoSyncPromptModalOpen(false);
       } else if (res.action === 'prompt_pin') {
         setAutoSyncPinError('Girdiğiniz PIN kodu hatalı!');
       } else if (res.action === 'error') {
         setAutoSyncPinError(res.message);
       } else {
+        setSessionPin(autoSyncPinInput);
         setIsAutoSyncPromptModalOpen(false);
       }
     } catch (e: any) {
@@ -445,17 +453,21 @@ export const App: React.FC = () => {
       <Modal
         isOpen={isAutoSyncPromptModalOpen}
         onClose={() => setIsAutoSyncPromptModalOpen(false)}
-        title="Bulut Eşitleme (PIN Doğrulama)"
+        title={autoSyncComparison === 'newer' ? 'Bulut Yükleme (PIN Doğrulama)' : 'Bulut Eşitleme (PIN Doğrulama)'}
         zIndex="z-[75]"
       >
         <div className="space-y-4">
           <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-200/90 leading-relaxed">
-            Google Drive'da diğer cihazınızdan gelen daha güncel bir yedek bulundu. Verilerinizi içeri aktarmak için bulut yedeğinin PIN kodunu girin.
+            {autoSyncPromptMessage || (
+              autoSyncComparison === 'newer'
+                ? 'Değişikliklerinizi şifreleyip Google Drive bulutuna güvenle yüklemek için lütfen PIN kodunuzu girin.'
+                : 'Google Drive\'da diğer cihazınızdan gelen daha güncel bir yedek bulundu. Verilerinizi içeri aktarmak için bulut yedeğinin PIN kodunu girin.'
+            )}
           </div>
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">
-              Buluttaki Yedeğin PIN Kodu
+              {autoSyncComparison === 'newer' ? 'Uygulama PIN Kodu' : 'Buluttaki Yedeğin PIN Kodu'}
             </label>
             <input
               type="password"
@@ -483,7 +495,9 @@ export const App: React.FC = () => {
               disabled={isAutoSyncSubmitting}
               className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 cursor-pointer disabled:opacity-50"
             >
-              {isAutoSyncSubmitting ? 'Eşitleniyor...' : 'Eşitle ve Yükle'}
+              {isAutoSyncSubmitting 
+                ? 'İşleniyor...' 
+                : (autoSyncComparison === 'newer' ? 'Şifrele ve Yükle' : 'Eşitle ve Yükle')}
             </button>
           </div>
         </div>

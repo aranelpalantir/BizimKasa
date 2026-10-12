@@ -342,15 +342,38 @@ export async function authenticateWithBiometrics(): Promise<boolean> {
   }
 }
 
-// In-memory active session PIN (Never written to disk/localStorage, strictly in RAM during session)
+// Session PIN (Stored in active RAM & per-tab sessionStorage during session, cleared on lock/browser close)
 let activeSessionPin: string | null = null;
 
 export function setSessionPin(pin: string | null): void {
   activeSessionPin = pin;
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      if (pin) {
+        sessionStorage.setItem('bizimkasa_session_pin', pin);
+      } else {
+        sessionStorage.removeItem('bizimkasa_session_pin');
+      }
+    }
+  } catch {
+    // ignore sessionStorage errors
+  }
 }
 
 export function getSessionPin(): string | null {
-  return activeSessionPin;
+  if (activeSessionPin) return activeSessionPin;
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const saved = sessionStorage.getItem('bizimkasa_session_pin');
+      if (saved) {
+        activeSessionPin = saved;
+        return saved;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 export async function getSettings(): Promise<AppSettings> {

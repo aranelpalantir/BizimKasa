@@ -477,6 +477,7 @@ export interface AutoSyncResult {
   message: string;
   remoteTime?: string;
   remoteData?: any;
+  comparison?: 'newer' | 'older' | 'equal' | 'unknown';
   error?: any;
 }
 
@@ -516,7 +517,7 @@ export async function syncWithGoogleDrive(explicitPin?: string): Promise<AutoSyn
       const pinToUse = explicitPin || getSessionPin() || undefined;
       const res = await uploadToGoogleDrive(pinToUse);
       setLastSyncTime(res.modifiedTime);
-      return { action: 'uploaded', message: 'İlk bulut yedeği yüklendi.' };
+      return { action: 'uploaded', comparison: 'newer', message: 'İlk bulut yedeği yüklendi.' };
     }
 
     // 2. Karşılaştır
@@ -524,12 +525,44 @@ export async function syncWithGoogleDrive(explicitPin?: string): Promise<AutoSyn
 
     if (comparison === 'equal') {
       setLastSyncTime(new Date().toISOString());
-      return { action: 'none', message: 'Verileriniz bulut ile güncel.' };
+      return { action: 'none', comparison: 'equal', message: 'Verileriniz bulut ile güncel.' };
     }
 
-    // Bulutta veri var ve zaman damgaları farklı: Akıllı Birleştirme (Smart Merge)
-    let remotePayload: any = null;
     const pinToUse = explicitPin || getSessionPin();
+    const lastSync = getLastSyncTime();
+
+    // 3. Eğer yerel veritabanı buluttan daha yeniyse (kullanıcı bu cihazda az önce değişiklik yaptıysa)
+    if (comparison === 'newer') {
+      // Buluttaki dosya bu cihazın son eşitleme zamanından daha yeni mi?
+      // Eğer değilse, bulutta başka bir cihazdan gelen yeni bir veri yoktur.
+      // Doğrudan yerel değişiklikleri buluta yükle.
+      const remoteChangedSinceLastSync = lastSync 
+        ? compareTimestamps(remote.lastModifiedAt, lastSync) === 'newer'
+        : false;
+
+      if (!remoteChangedSinceLastSync) {
+        if (remote.isEncrypted && !pinToUse) {
+          return {
+            action: 'prompt_pin',
+            remoteTime: remote.lastModifiedAt,
+            remoteData: remote.fileData,
+            comparison: 'newer',
+            message: 'Değişikliklerinizi şifreleyip Google Drive bulutuna yüklemek için lütfen PIN kodunuzu girin.'
+          };
+        }
+
+        const uploadRes = await uploadToGoogleDrive(pinToUse || undefined);
+        setLastSyncTime(uploadRes.modifiedTime || new Date().toISOString());
+        return {
+          action: 'uploaded',
+          comparison: 'newer',
+          message: 'Değişiklikleriniz buluta başarıyla yüklendi.'
+        };
+      }
+    }
+
+    // 4. Bulutta veri var ve zaman damgaları farklı: Akıllı Birleştirme (Smart Merge)
+    let remotePayload: any = null;
 
     if (remote.isEncrypted) {
       if (!pinToUse) {
@@ -537,7 +570,10 @@ export async function syncWithGoogleDrive(explicitPin?: string): Promise<AutoSyn
           action: 'prompt_pin',
           remoteTime: remote.lastModifiedAt,
           remoteData: remote.fileData,
-          message: 'Bulutta yeni veriler var. Şifreyi çözmek için PIN kodu gerekiyor.'
+          comparison,
+          message: comparison === 'newer'
+            ? 'Çevrimdışı yapılan değişiklikleri bulut yedeği ile birleştirmek için lütfen PIN kodunuzu girin.'
+            : 'Google Drive\'da diğer cihazınızdan gelen daha güncel bir yedek bulundu. Verilerinizi içeri aktarmak için bulut yedeğinin PIN kodunu girin.'
         };
       }
 
@@ -548,6 +584,7 @@ export async function syncWithGoogleDrive(explicitPin?: string): Promise<AutoSyn
           action: 'prompt_pin',
           remoteTime: remote.lastModifiedAt,
           remoteData: remote.fileData,
+          comparison,
           message: 'Buluttaki yedeğin PIN kodu farklı. Lütfen yedeğin PIN kodunu girin.'
         };
       }
@@ -558,7 +595,7 @@ export async function syncWithGoogleDrive(explicitPin?: string): Promise<AutoSyn
     // Akıllı birleştirmeyi veritabanına uygula (Tombstone + ID bazlı birleştirme)
     const mergeRes = await smartMergeBackupToDatabase(remotePayload);
     if (!mergeRes.success) {
-      return { action: 'error', message: mergeRes.message };
+      return { action: 'error', comparison, message: mergeRes.message };
     }
 
     // Birleşmiş ana kopyayı Google Drive'a da geri yükle (her iki taraf da tam eşitlensin)
@@ -568,12 +605,14 @@ export async function syncWithGoogleDrive(explicitPin?: string): Promise<AutoSyn
     if (comparison === 'older') {
       return {
         action: 'downloaded',
+        comparison: 'older',
         remoteTime: remote.lastModifiedAt,
         message: 'Buluttaki veriler akıllı birleştirme ile başarıyla eşitlendi.'
       };
     } else {
       return {
         action: 'uploaded',
+        comparison: 'newer',
         message: 'Verileriniz bulutla birleştirilerek güncellendi.'
       };
     }
