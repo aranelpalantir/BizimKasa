@@ -456,7 +456,13 @@ export const App: React.FC = () => {
         title={autoSyncComparison === 'newer' ? 'Bulut Yükleme (PIN Doğrulama)' : 'Bulut Eşitleme (PIN Doğrulama)'}
         zIndex="z-[75]"
       >
-        <div className="space-y-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleConfirmAutoSyncPin();
+          }}
+          className="space-y-4"
+        >
           <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-200/90 leading-relaxed">
             {autoSyncPromptMessage || (
               autoSyncComparison === 'newer'
@@ -471,8 +477,20 @@ export const App: React.FC = () => {
             </label>
             <input
               type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
               value={autoSyncPinInput}
-              onChange={(e) => setAutoSyncPinInput(e.target.value)}
+              onChange={(e) => {
+                setAutoSyncPinInput(e.target.value.replace(/\D/g, ''));
+                setAutoSyncPinError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleConfirmAutoSyncPin();
+                }
+              }}
               placeholder="PIN kodunu girin..."
               className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-400"
               autoFocus
@@ -485,13 +503,14 @@ export const App: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-2">
             <button
+              type="button"
               onClick={() => setIsAutoSyncPromptModalOpen(false)}
               className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium cursor-pointer"
             >
               Daha Sonra
             </button>
             <button
-              onClick={handleConfirmAutoSyncPin}
+              type="submit"
               disabled={isAutoSyncSubmitting}
               className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 cursor-pointer disabled:opacity-50"
             >
@@ -500,7 +519,7 @@ export const App: React.FC = () => {
                 : (autoSyncComparison === 'newer' ? 'Şifrele ve Yükle' : 'Eşitle ve Yükle')}
             </button>
           </div>
-        </div>
+        </form>
       </Modal>
     </div>
   );
