@@ -1,4 +1,4 @@
-import { db } from '../db/db';
+import { db, touchLastModified } from '../db/db';
 import type { MarketRate } from '../types/finance';
 
 import { TEFAS_FUNDS_DICTIONARY, lookupTefasFund, searchTefasFunds } from '../constants/tefasFunds';
@@ -249,14 +249,16 @@ export async function syncTefasFundRatesWithAssets(): Promise<{ activeSymbols: s
         });
       } else if (!existing.isManualOverride || existing.source === 'Alış Fiyatı' || existing.source === 'Maliyet Kuru' || existing.rateTRY === 2.4962) {
         if (existing.source !== 'Manuel Giriş' || existing.rateTRY === 2.4962) {
-          await db.marketRates.update(symbol, {
-            rateTRY: 0,
-            changeDailyPct: 0,
-            source: 'Fiyat Girilmedi',
-            dataDate: todayStr,
-            updatedAt: nowISO,
-            isManualOverride: false
-          });
+          if (existing.rateTRY !== 0 || existing.source !== 'Fiyat Girilmedi' || existing.isManualOverride) {
+            await db.marketRates.update(symbol, {
+              rateTRY: 0,
+              changeDailyPct: 0,
+              source: 'Fiyat Girilmedi',
+              dataDate: todayStr,
+              updatedAt: nowISO,
+              isManualOverride: false
+            });
+          }
         }
       }
     }
@@ -334,15 +336,7 @@ export async function fetchLiveRatesMultiSource(): Promise<{ success: boolean; u
         await saveOrUpdateRate('XU100', 'BIST 100', 'STOCK_INDEX', 12249.04, 'Borsa İstanbul', todayStr, nowISO, false, 1.20);
         await saveOrUpdateRate('NASDAQ100', 'Nasdaq 100', 'STOCK_INDEX', 30366.11, 'Global', todayStr, nowISO, false, 0.65);
 
-        // TEFAS Fonları
-        const allFunds = await db.marketRates.where('category').equals('FUND').toArray();
-        for (const f of allFunds) {
-          const fundBase = BASELINE_MARKET_RATES[f.symbol];
-          const fundChange = fundBase ? fundBase.defaultChangePct : (f.changeDailyPct || 1.15);
-          await saveOrUpdateRate(f.symbol, f.name, 'FUND', f.rateTRY, f.source || 'TEFAS', todayStr, nowISO, f.isManualOverride, fundChange);
-        }
-
-        updatedCount += 9 + allFunds.length;
+        updatedCount += 9;
       }
     }
   } catch (err) {
@@ -426,6 +420,12 @@ export async function saveOrUpdateRate(
   };
 
   await db.marketRates.put(rateRecord);
+
+  // Kullanıcı tarafından manuel girilen veya güncellenen bir fiyat ise veritabanı son değişiklik zamanını güncelle
+  // Bu sayede bulut yedekleme (Google Drive) otomatik tetiklenir ve arayüzdeki son değişiklik zamanı güncellenir
+  if (isManual) {
+    touchLastModified(updatedAt);
+  }
 }
 
 // Reset manual override back to live and immediately restore real market rate
@@ -447,6 +447,7 @@ export async function resetManualRate(symbol: string): Promise<void> {
       dataDate: todayStr,
       updatedAt: nowISO
     });
+    touchLastModified(nowISO);
     return;
   }
 
@@ -458,6 +459,7 @@ export async function resetManualRate(symbol: string): Promise<void> {
     source: fallback?.source || 'Piyasa API',
     updatedAt: nowISO
   });
+  touchLastModified(nowISO);
 
   // 2. Fetch fresh live rates to immediately overwrite rateTRY with real market value
   const res = await fetchLiveRatesMultiSource();

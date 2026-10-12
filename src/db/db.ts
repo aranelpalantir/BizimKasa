@@ -163,12 +163,13 @@ export async function getLastModifiedTimestamp(): Promise<string> {
     // Fallback: Mevcut kayıtlar arasından en yenisini bul
     let latestMs = 0;
 
-    const [txs, entries, accs, grps, plans] = await Promise.all([
+    const [txs, entries, accs, grps, plans, rates] = await Promise.all([
       db.transactions.toArray().catch(() => []),
       db.cashFlowEntries.toArray().catch(() => []),
       db.accounts.toArray().catch(() => []),
       db.groups.toArray().catch(() => []),
-      db.investmentPlans.toArray().catch(() => [])
+      db.investmentPlans.toArray().catch(() => []),
+      db.marketRates.toArray().catch(() => [])
     ]);
 
     for (const t of txs) {
@@ -202,6 +203,13 @@ export async function getLastModifiedTimestamp(): Promise<string> {
     for (const p of plans) {
       if (p.updatedAt) {
         const ms = new Date(p.updatedAt).getTime();
+        if (!isNaN(ms) && ms > latestMs) latestMs = ms;
+      }
+    }
+
+    for (const r of rates) {
+      if (r.isManualOverride && r.updatedAt) {
+        const ms = new Date(r.updatedAt).getTime();
         if (!isNaN(ms) && ms > latestMs) latestMs = ms;
       }
     }

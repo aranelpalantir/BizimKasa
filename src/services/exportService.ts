@@ -277,9 +277,20 @@ export async function smartMergeBackupToDatabase(
         if (!existing) {
           rateMap.set(r.symbol, r);
         } else {
-          const localMs = existing.lastUpdated ? new Date(existing.lastUpdated).getTime() : 0;
-          const remoteMs = r.lastUpdated ? new Date(r.lastUpdated).getTime() : 0;
-          if (remoteMs >= localMs) rateMap.set(r.symbol, r);
+          const localDateStr = existing.updatedAt || existing.lastUpdated;
+          const remoteDateStr = r.updatedAt || r.lastUpdated;
+          const localMs = localDateStr ? new Date(localDateStr).getTime() : 0;
+          const remoteMs = remoteDateStr ? new Date(remoteDateStr).getTime() : 0;
+          if (remoteMs > localMs) {
+            rateMap.set(r.symbol, r);
+          } else if (remoteMs === localMs) {
+            // Zaman damgaları eşitse, manuel girişi veya tanımlı fiyatı tercih et
+            const remoteHasValue = (r.isManualOverride || r.category === 'FUND') && (r.rateTRY > 0);
+            const localHasValue = (existing.isManualOverride || existing.category === 'FUND') && (existing.rateTRY > 0);
+            if (remoteHasValue && !localHasValue) {
+              rateMap.set(r.symbol, r);
+            }
+          }
         }
       }
       const mergedRates = Array.from(rateMap.values());
