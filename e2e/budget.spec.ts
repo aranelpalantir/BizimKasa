@@ -29,8 +29,8 @@ test.describe('Gelir & Gider (Bütçe & Nakit Akışı)', () => {
   test('yıllık matris ve aylık görünüm modları arasında geçiş yapılabilir', async ({ page }) => {
     // Switch to single month view
     await page.getByRole('button', { name: 'Aylık Görünüm' }).click();
-    await expect(page.getByTitle('Önceki Ay')).toBeVisible();
-    await expect(page.getByTitle('Sonraki Ay')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Önceki Ay', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Sonraki Ay/ })).toBeVisible();
 
     // Switch back to matrix view
     await page.getByRole('button', { name: 'Yıllık Matris' }).click();
@@ -109,5 +109,24 @@ test.describe('Gelir & Gider (Bütçe & Nakit Akışı)', () => {
 
     await expect(modal).not.toBeVisible();
     await expect(page.getByText('Kütüphane Aboneliği')).toBeVisible();
+  });
+
+  test('önceki aydan kopyala sihirbazı açılır, aktarım önizlemesi sunar ve kapatılabilir', async ({ page }) => {
+    // "Önceki Aydan Kopyala" butonuna tıkla
+    await page.getByRole('button', { name: 'Önceki Aydan Kopyala', exact: true }).click();
+
+    // Modal açılmalı
+    const modal = page.locator('div[role="dialog"]');
+    await expect(modal).toBeVisible();
+    await expect(modal.getByText('Önceki Aydan Veri Kopyala')).toBeVisible();
+
+    // Aktarım yönü ve seçenekler görünür olmalı
+    await expect(modal.getByText('Aktarım Yönü')).toBeVisible();
+    await expect(modal.getByRole('button', { name: 'Sadece Gelirler' })).toBeVisible();
+    await expect(modal.getByText('Yalnızca boş kalemleri doldur (Önerilen)')).toBeVisible();
+
+    // Vazgeç butonu ile modal kapatılabilir
+    await modal.getByRole('button', { name: 'Vazgeç' }).click();
+    await expect(modal).not.toBeVisible();
   });
 });

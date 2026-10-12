@@ -295,5 +295,36 @@ test.describe('Varlıklar (Altın, Döviz ve Fon Takibi)', () => {
     await importModal.getByRole('button', { name: 'Vazgeç' }).click();
     await expect(importModal).not.toBeVisible();
   });
+
+  test('TEFAS fon kodu arama ve otomatik tamamlama ile fon seçilebilir', async ({ page }) => {
+    // Yatırım fonları sekmesine geç
+    await page.getByRole('button', { name: 'Yatırım Fonları & Borsa', exact: true }).click();
+
+    // Fon Al / Bozdur modalını aç
+    await page.getByRole('button', { name: 'Fon Al / Bozdur' }).click();
+    const modal = page.locator('div[role="dialog"]');
+    await expect(modal).toBeVisible();
+
+    // "+ Yeni Fon Kodu Ekle" düğmesine tıkla
+    await modal.getByRole('button', { name: '+ Yeni Fon Kodu Ekle' }).click();
+
+    // TEFAS kodu yaz
+    const codeInput = modal.locator('input[placeholder="Fon Kodunu Yazın..."]');
+    await expect(codeInput).toBeVisible();
+    await codeInput.fill('MAC');
+
+    // Öneri listesinde Marmara Capital veya MAC belirmeli
+    const suggestion = modal.locator('div:has-text("MAC")').filter({ hasText: /Marmara/i }).last();
+    await expect(suggestion).toBeVisible();
+    await suggestion.click();
+
+    // Fon Adı kutusu otomatik dolmalı
+    const nameInput = modal.locator('input[placeholder*="Fon adı otomatik gelir"]');
+    await expect(nameInput).toHaveValue(/Marmara/i);
+
+    // Vazgeç ile kapat
+    await modal.getByRole('button', { name: 'Vazgeç' }).click();
+    await expect(modal).not.toBeVisible();
+  });
 });
 

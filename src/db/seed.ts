@@ -74,7 +74,7 @@ async function seedDummyData(): Promise<void> {
     { id: 'group-tasarruf', name: 'Tasarruf Fonu', color: '#f59e0b', order: 3, createdAt: '2025-01-01T00:00:00Z' },
     { id: 'group-ortak', name: 'Ortak Kasa', color: '#10b981', order: 4, createdAt: '2025-01-01T00:00:00Z' },
   ];
-  await db.groups.bulkAdd(groups);
+  await db.groups.bulkPut(groups);
 
   // 2. Hesaplar & Kategoriler
   const accounts: Account[] = [
@@ -113,7 +113,7 @@ async function seedDummyData(): Promise<void> {
     // Ortak Varlıklar
     { id: 'acc-ort-dolar', groupId: 'group-ortak', name: 'Dolar (USD)', type: 'ASSET', subType: 'CURRENCY', symbol: 'USD', currency: 'USD', order: 3, createdAt: '2025-01-01' },
   ];
-  await db.accounts.bulkAdd(accounts);
+  await db.accounts.bulkPut(accounts);
 
   // 3. Aylık Nakit Akışı Verileri (2025 Ocak - 2026 Ekim arası, 22 ay)
   const cashFlows: CashFlowEntry[] = [];
@@ -159,7 +159,7 @@ async function seedDummyData(): Promise<void> {
       );
     }
   }
-  await db.cashFlowEntries.bulkAdd(cashFlows);
+  await db.cashFlowEntries.bulkPut(cashFlows);
 
   // 4. Varlık Alış & Satış Hareketleri (2025 - 2026)
   const transactions: AssetTransaction[] = [
@@ -201,10 +201,10 @@ async function seedDummyData(): Promise<void> {
     { id: 'tx-ort-usd-1', accountId: 'acc-ort-dolar', groupId: 'group-ortak', date: '2025-05-10', year: 2025, month: 5, type: 'BUY', quantity: 2000, totalAmountTRY: 70000, unitPriceTRY: 35.00, note: 'Acil durum rezervi', createdAt: '2025-05-10' },
     { id: 'tx-ort-usd-2', accountId: 'acc-ort-dolar', groupId: 'group-ortak', date: '2026-01-15', year: 2026, month: 1, type: 'BUY', quantity: 1500, totalAmountTRY: 66000, unitPriceTRY: 44.00, note: 'Ortak kasa takviyesi', createdAt: '2026-01-15' },
   ];
-  await db.transactions.bulkAdd(transactions);
+  await db.transactions.bulkPut(transactions);
 
   // 5. Market Rates
-  await db.marketRates.bulkAdd(INITIAL_RATES);
+  await db.marketRates.bulkPut(INITIAL_RATES);
 
   // 6. Default Settings
   const defaultSettings: AppSettings = {

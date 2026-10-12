@@ -1628,7 +1628,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
-              autoComplete="one-time-code"
+              autoComplete="off"
               maxLength={6}
               value={newPin}
               onChange={(e) => {
@@ -1658,7 +1658,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
-              autoComplete="one-time-code"
+              autoComplete="off"
               maxLength={6}
               value={confirmPin}
               onChange={(e) => {
@@ -1804,6 +1804,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 ref={exportPasswordInputRef}
                 autoFocus
                 type={showExportPassword ? 'text' : 'password'}
+                autoComplete="off"
                 value={exportPassword}
                 onChange={(e) => {
                   setExportPassword(e.target.value);
@@ -1828,6 +1829,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </label>
             <input
               type={showExportPassword ? 'text' : 'password'}
+              autoComplete="off"
               value={confirmExportPassword}
               onChange={(e) => {
                 setConfirmExportPassword(e.target.value);

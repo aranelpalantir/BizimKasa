@@ -1,13 +1,11 @@
 # 🪙 BizimKasa
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version: v1.3.0](https://img.shields.io/badge/Version-v1.3.0-blue.svg)](#)
 [![PWA: Offline Ready](https://img.shields.io/badge/PWA-Offline%20Ready-00d2ff.svg?logo=pwa&logoColor=white)](#)
-[![Cloudflare Pages](https://img.shields.io/badge/Deployed%20with-Cloudflare%20Pages-F38020.svg?logo=cloudflare)](https://bizimkasa.pages.dev/)
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-bizimkasa.pages.dev-success.svg)](https://bizimkasa.pages.dev/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Cloudflare%20Pages-F38020.svg?logo=cloudflare)](https://bizimkasa.pages.dev/)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-BizimKasa-181717.svg?logo=github&logoColor=white)](https://github.com/aranelpalantir/BizimKasa)
 [![Mobile: iOS & Android](https://img.shields.io/badge/Mobile-iOS%20%7C%20Android-black.svg?logo=apple&logoColor=white)](#)
-[![E2E Tests: 26 Passing](https://img.shields.io/badge/Playwright%20E2E-26%20Passing-success.svg?logo=playwright&logoColor=white)](#)
+[![Playwright: E2E Tested](https://img.shields.io/badge/Playwright-E2E%20Tested-success.svg?logo=playwright&logoColor=white)](#)
 [![AI-Assisted](https://img.shields.io/badge/Developed%20with-AI%20Pair%20Programming-8A2BE2.svg)](#)
 
 > *"Finansal verileriniz yalnızca size aittir — Sıfır sunucu bağımlılığı, tam veri gizliliği, sınırsız kontrol ve cebinizdeki yerel güç."*
@@ -57,7 +55,7 @@ Uygulamaya tarayıcınızdan veya telefonunuzdan doğrudan erişebilirsiniz:
 ### 4. 🪙 Altın, Döviz & TEFAS Fon Portföyü
 - **Altın (Gram & Çeyrek):** Ağırlıklı ortalama birim maliyet (`Ort. Brm. Mlyt.`), güncel piyasa değeri, net kâr/zarar (₺ ve %) ve çeyrek altın çeşitleri (Çeyrek, Yarım, Tam, Cumhuriyet).
 - **Çok Yıllı Döviz Matrisi:** USD ve EUR birikimleri, yıllara yayılan nakit akışı, ortalama kur maliyeti ve anlık TL karşılığı.
-- **1.875+ TEFAS Fon Kütüphanesi:** Türkiye'deki tüm açık ve kapalı TEFAS fonlarını içeren yerleşik sözlük (`tefasFunds.ts`), akıllı kod/isim araması ve anında otomatik tamamlama.
+- **Kapsamlı TEFAS Fon Kütüphanesi:** Türkiye'deki tüm açık ve kapalı TEFAS fonlarını içeren yerleşik sözlük (`tefasFunds.ts`), akıllı kod/isim araması ve anında otomatik tamamlama.
 - **Maliyet Esaslı Hatasız Değerleme:** Fonların piyasa fiyatı kullanıcı tarafından girilene kadar kod içerisinden sahte fiyat dayatılmaz; değerleme motoru otomatik olarak alış maliyetini (`avgCost`) kullanarak sanal kâr/zarar oluşturmaz ve net varlığı tam korur.
 - **Toplu Hareket Yönetimi & CSV İçe Aktarma:** Alım/satım işlemlerini onay kutularıyla çoklu seçip tek seferde silebilme (`bulkDelete`); geçmiş verileri CSV ve metin yapıştırarak içeri aktarma.
 
@@ -119,7 +117,7 @@ Uygulamaya tarayıcınızdan veya telefonunuzdan doğrudan erişebilirsiniz:
 | **Grafik & Görsel** | Recharts | Varlık dağılımı ve portföy pasta grafikleri |
 | **İkonlar** | Lucide React | Modern ve tutarlı arayüz ikon seti |
 | **Efektler** | Canvas-Confetti | Hedef tamamlandığında motive edici konfeti kutlaması |
-| **Test & Kalite** | Playwright E2E | Uçtan uca otomatik test senaryoları (26 test) |
+| **Test & Kalite** | Playwright E2E | Uçtan uca otomatik test senaryoları |
 | **PWA & Offline** | Vite Plugin PWA (Workbox) | Çevrimdışı önbellekleme, Service Worker ve mobil kurulum |
 
 ---
@@ -137,7 +135,7 @@ BizimKasa/
 │   │   ├── dashboard/        # Konsolide Net Varlık Kartı, Aylık Nakit Akışı Kokpiti, Harcama Dağılımı, Varlık Grafiği, Kurlar
 │   │   ├── investment/       # Aylık Yatırım & Birikim Hedef Planlayıcısı (Konfeti kutlamalı)
 │   │   └── settings/         # Bulut Eşitleme, Şifreli/Standart Yedekleme ve Güvenlik Ayarları
-│   ├── constants/            # 18 renk seçeneği (themeColors.ts) ve 1.875 fonluk TEFAS sözlüğü (tefasFunds.ts)
+│   ├── constants/            # 18 renk seçeneği (themeColors.ts) ve TEFAS fon sözlüğü (tefasFunds.ts)
 │   ├── db/                   # Dexie.js IndexedDB v4 şeması (Tombstones desteği) ve tohum verileri
 │   ├── services/             # Portföy motoru, canlı kurlar, Web Crypto API ve güvenlik servisleri
 │   │   ├── cryptoService.ts  # AES-256-GCM ve PBKDF2 Web Crypto API motoru
@@ -147,9 +145,9 @@ BizimKasa/
 │   │   ├── ratesService.ts   # Canlı serbest piyasa kurları ve TEFAS senkronizasyonu
 │   │   └── portfolioService.ts# Konsolide portföy ve kâr/zarar hesaplama motoru
 │   ├── types/                # Finansal veri modelleri ve TypeScript tip tanımları
-│   └── version.ts            # Uygulama sürümü ve derleme meta verileri (v1.3.0)
+│   └── version.ts            # Uygulama sürümü ve derleme meta verileri
 ├── public/                   # PWA ikonları, web manifest ve statik varlıklar
-├── e2e/                      # Playwright uçtan uca test senaryoları (26 test)
+├── e2e/                      # Playwright uçtan uca test senaryoları
 ├── index.html                # PWA başlangıç HTML şablonu
 ├── vite.config.ts            # Vite & VitePWA servis çalıştırıcı yapılandırması
 └── package.json              # Bağımlılıklar ve npm scriptleri

@@ -47,13 +47,13 @@ test.describe('Hesap ve Kasa Yönetimi (Account & Group Management)', () => {
 
     // Clicking it activates it
     await page.getByRole('button', { name: 'Özel Birikim Kasası', exact: true }).click();
-    await expect(page.getByText('Özel Birikim Kasası Varlıkları Görüntüleniyor')).toBeVisible();
+    await expect(page.getByText('Özel Birikim Kasası Verileri Görüntüleniyor')).toBeVisible();
   });
 
   test('hesap renk teması filtre çubuğundaki palet düğmesinden değiştirilebilir', async ({ page }) => {
     // Click "Ana Hesap" in the filter bar
     await page.getByRole('button', { name: 'Ana Hesap', exact: true }).click();
-    await expect(page.getByText('Ana Hesap Varlıkları Görüntüleniyor')).toBeVisible();
+    await expect(page.getByText('Ana Hesap Verileri Görüntüleniyor')).toBeVisible();
 
     // Palette button appears next to the active account
     const paletteBtn = page.getByRole('button', { name: 'Ana Hesap renk temasını değiştir' }).first();

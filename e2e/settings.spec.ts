@@ -26,7 +26,9 @@ test.describe('Ayarlar ve Güvenlik (Settings & PIN Security)', () => {
     await expect(pinModal.getByText('Uygulama PIN Kodu Belirle')).toBeVisible();
 
     const inputs = pinModal.locator('input[type="password"]');
+    await inputs.nth(0).clear();
     await inputs.nth(0).fill('1234');
+    await inputs.nth(1).clear();
     await inputs.nth(1).fill('1234');
 
     await pinModal.getByRole('button', { name: 'PIN Kodunu Kaydet' }).click();
@@ -107,6 +109,7 @@ test.describe('Ayarlar ve Güvenlik (Settings & PIN Security)', () => {
     await expect(exportModal.getByText('Girdiğiniz şifreler birbiriyle uyuşmuyor.')).toBeVisible();
 
     // 3. Doğru şifre ile indir
+    await passwordInputs.nth(0).fill('gizli123');
     await passwordInputs.nth(1).fill('gizli123');
     const downloadPromise = page.waitForEvent('download');
     await exportModal.getByRole('button', { name: 'Şifrele ve İndir' }).click();
@@ -129,7 +132,7 @@ test.describe('Ayarlar ve Güvenlik (Settings & PIN Security)', () => {
     // 6. Yanlış şifre dene
     await decryptModal.locator('input').fill('yanlis_sifre');
     await decryptModal.getByRole('button', { name: 'Şifreyi Çöz ve Yükle' }).click();
-    await expect(decryptModal.getByText('Yedek şifresi hatalı veya dosya bozuk!')).toBeVisible();
+    await expect(decryptModal.getByText(/Girdiğiniz yedek şifresi hatalı/i)).toBeVisible();
 
     // 7. Doğru şifre gir
     await decryptModal.locator('input').fill('gizli123');
@@ -137,5 +140,19 @@ test.describe('Ayarlar ve Güvenlik (Settings & PIN Security)', () => {
 
     // Modal kapanmalı ve geri yükleme gerçekleşmeli
     await expect(decryptModal).not.toBeVisible();
+  });
+
+  test('Google Drive ile bulut eşitleme paneli ve kontrolleri görüntülenir', async ({ page }) => {
+    // Bulut eşitleme başlığı
+    await expect(page.getByText('Google Drive ile Bulut Eşitleme')).toBeVisible();
+
+    // Kolay & Otomatik rozeti
+    await expect(page.getByText('Otomatik & Kolay')).toBeVisible();
+
+    // Google Drive ile Bağlan butonu veya bağlantı kontrolü
+    await expect(page.getByRole('button', { name: /Google Drive ile Bağlan/ })).toBeVisible();
+
+    // Verilerin PIN ile şifrelendiği güvence metni
+    await expect(page.getByText(/askeri düzeyde|şifrelenir/i).first()).toBeVisible();
   });
 });

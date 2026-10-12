@@ -51,23 +51,23 @@ test.describe('Dashboard / Ana Sayfa', () => {
 
   test('hesap filtreleri arasında geçiş yapılabilir', async ({ page }) => {
     // Click on 'Ana Hesap'
-    const anaHesapBtn = page.getByRole('button', { name: /Ana Hesap/i });
+    const anaHesapBtn = page.getByRole('button', { name: 'Ana Hesap', exact: true });
     if (await anaHesapBtn.isVisible()) {
       await anaHesapBtn.click();
       // Should show that Ana Hesap is selected
-      await expect(page.getByText('Ana Hesap Varlıkları Görüntüleniyor')).toBeVisible();
+      await expect(page.getByText('Ana Hesap Verileri Görüntüleniyor')).toBeVisible();
 
       // Switch back to 'Tümü (Konsolide)'
       await page.getByRole('button', { name: /Tümü \(Konsolide\)/i }).click();
-      await expect(page.getByText('Ana Hesap Varlıkları Görüntüleniyor')).not.toBeVisible();
+      await expect(page.getByText('Ana Hesap Verileri Görüntüleniyor')).not.toBeVisible();
     }
   });
 
   test('hızlı erişim kartları ilgili sekmelere yönlendirir', async ({ page }) => {
     const bottomNav = page.locator('nav');
 
-    // "Matrise Git" navigates to budget tab
-    await page.getByRole('button', { name: 'Matrise Git' }).click();
+    // "Bütçe Matrisi" navigates to budget tab
+    await page.getByRole('button', { name: 'Bütçe Matrisi' }).click();
     await expect(bottomNav.getByRole('button', { name: 'Gelir & Gider' })).toHaveClass(/text-amber-400/);
 
     // Go back to dashboard by clicking logo or bottom nav
@@ -76,5 +76,28 @@ test.describe('Dashboard / Ana Sayfa', () => {
     // "Tümünü Yönet" navigates to assets tab
     await page.getByRole('button', { name: 'Tümünü Yönet' }).click();
     await expect(bottomNav.getByRole('button', { name: 'Varlıklar' })).toHaveClass(/text-amber-400/);
+  });
+
+  test('nakit akışı kokpitinde ay değiştirilebilir ve "Bu Aya Dön" butonu ile sıfırlanabilir', async ({ page }) => {
+    // Hero karttaki "Önceki Ay" butonuna tıkla
+    const prevMonthBtn = page.getByTitle('Önceki Ay');
+    await expect(prevMonthBtn).toBeVisible();
+    await prevMonthBtn.click();
+
+    // Farklı bir aya geçildiği için "Bu Aya Dön" butonu görünür olmalı
+    const resetMonthBtn = page.getByTitle('Bu Aya Dön');
+    await expect(resetMonthBtn).toBeVisible();
+
+    // "Bu Aya Dön" butonuna tıklayarak geçerli aya dön
+    await resetMonthBtn.click();
+    await expect(resetMonthBtn).not.toBeVisible();
+  });
+
+  test('canlı piyasa kurları bandı (RatesTicker) kurları listeler', async ({ page }) => {
+    // Kur bandında USD veya Dolar ve Euro kurları yer almalı
+    await expect(page.getByText('USD').first()).toBeVisible();
+    await expect(page.getByText('EUR').first()).toBeVisible();
+    // Altın kurları yer almalı
+    await expect(page.getByText(/Gram Altın|Altın/i).first()).toBeVisible();
   });
 });
