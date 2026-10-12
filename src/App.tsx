@@ -7,6 +7,7 @@ import { getSettings, updateSettings, setSessionPin } from './services/securityS
 import { 
   syncWithGoogleDrive, 
   requestGoogleAccessTokenSilently, 
+  requestGoogleAccessToken,
   isGoogleDriveConfigured, 
   isGoogleDriveTokenValid,
   getLastSyncTime 
@@ -91,6 +92,23 @@ export const App: React.FC = () => {
       }
     } catch (err) {
       console.warn('Auto-sync execution error:', err);
+    }
+  };
+
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+
+  const handleManualCloudSync = async () => {
+    if (!isCloudConfigured || isCloudSyncing) return;
+    setIsCloudSyncing(true);
+    try {
+      if (!isGoogleDriveTokenValid()) {
+        await requestGoogleAccessToken(false);
+      }
+      await triggerAutoSync();
+    } catch (err) {
+      console.warn('Manual cloud sync error:', err);
+    } finally {
+      setIsCloudSyncing(false);
     }
   };
 
@@ -343,6 +361,8 @@ export const App: React.FC = () => {
         lastModifiedAt={lastModifiedAt}
         isCloudConfigured={isCloudConfigured}
         lastSyncTime={lastSyncTime}
+        onSyncCloud={handleManualCloudSync}
+        isSyncingCloud={isCloudSyncing}
       />
 
       {/* Main Content Area */}

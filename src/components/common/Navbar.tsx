@@ -17,6 +17,8 @@ interface NavbarProps {
   lastModifiedAt?: string;
   isCloudConfigured?: boolean;
   lastSyncTime?: string | null;
+  onSyncCloud?: () => void;
+  isSyncingCloud?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -30,7 +32,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   isStandalone,
   lastModifiedAt,
   isCloudConfigured,
-  lastSyncTime
+  lastSyncTime,
+  onSyncCloud,
+  isSyncingCloud
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-white/10 px-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-3 select-none">
@@ -71,16 +75,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 )}
                 {isCloudConfigured && (
-                  <div 
-                    title={lastSyncTime ? `Son Bulut Eşitlemesi: ${formatFullDateTime(lastSyncTime)}` : 'Bulut eşitlemesi aktif, henüz senkronize edilmedi'}
-                    className="flex items-center gap-1 text-emerald-400"
+                  <button
+                    type="button"
+                    onClick={onSyncCloud}
+                    disabled={isSyncingCloud}
+                    title="Google Drive ile Şimdi Eşitle (Dokunun)"
+                    className="flex items-center gap-1 text-emerald-400 active:scale-95 transition-transform cursor-pointer disabled:opacity-50"
                   >
-                    <Cloud className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                    <Cloud className={`w-2.5 h-2.5 text-emerald-400 shrink-0 ${isSyncingCloud ? 'animate-pulse' : ''}`} />
                     <span className="text-slate-400 text-[9.5px]">Bulut:</span>
                     <span className="text-emerald-400 font-semibold text-[9.5px]">
-                      {lastSyncTime ? formatMobileLastModified(lastSyncTime) : 'Bekliyor'}
+                      {isSyncingCloud ? 'Eşitleniyor...' : (lastSyncTime ? formatMobileLastModified(lastSyncTime) : 'Eşitle')}
                     </span>
-                  </div>
+                  </button>
                 )}
               </div>
             )}
@@ -89,18 +96,27 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
-          {/* Desktop Cloud Sync Badge */}
+          {/* Desktop Cloud Sync Badge / Button */}
           {isCloudConfigured && (
-            <div 
-              title={lastSyncTime ? `Son Bulut Eşitlemesi: ${formatFullDateTime(lastSyncTime)}` : 'Bulut eşitlemesi aktif, henüz senkronize edilmedi'}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-emerald-500/20 text-xs text-slate-300 transition-colors shadow-sm select-none cursor-default mr-0.5"
+            <button
+              type="button"
+              onClick={onSyncCloud}
+              disabled={isSyncingCloud}
+              title={
+                isSyncingCloud 
+                  ? 'Bulutla eşitleniyor...' 
+                  : (lastSyncTime 
+                      ? `Son Bulut Eşitlemesi: ${formatFullDateTime(lastSyncTime)} • Tıklayarak Şimdi Eşitleyin` 
+                      : 'Bulut eşitlemesi aktif • Tıklayarak Şimdi Eşitleyin')
+              }
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-emerald-950/40 border border-emerald-500/30 hover:border-emerald-500/60 text-xs text-slate-300 hover:text-white transition-all shadow-sm select-none cursor-pointer active:scale-95 disabled:opacity-50 mr-0.5"
             >
-              <Cloud className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <Cloud className={`w-3.5 h-3.5 text-emerald-400 shrink-0 ${isSyncingCloud ? 'animate-spin' : ''}`} />
               <span className="text-slate-400">Bulut:</span>
               <span className="font-semibold text-emerald-400">
-                {lastSyncTime ? formatLastModified(lastSyncTime) : 'Bekliyor'}
+                {isSyncingCloud ? 'Eşitleniyor...' : (lastSyncTime ? formatLastModified(lastSyncTime) : 'Eşitle')}
               </span>
-            </div>
+            </button>
           )}
 
           {/* Desktop Last Modified Badge */}
@@ -114,11 +130,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="font-semibold text-amber-300">{formatLastModified(lastModifiedAt)}</span>
             </div>
           )}
+
           {/* Refresh Rates */}
           <button
             onClick={onRefreshRates}
-            title="Kurları Güncelle"
-            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-white/5 active:scale-95"
+            title="Canlı Piyasa Kurlarını Güncelle (Dolar, Altın, Fonlar)"
+            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-white/5 active:scale-95 cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshingRates ? 'animate-spin text-amber-400' : ''}`} />
           </button>
