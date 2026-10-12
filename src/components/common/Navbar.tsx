@@ -134,7 +134,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Refresh Rates */}
           <button
             onClick={onRefreshRates}
-            title="Canlı Piyasa Kurlarını Güncelle (Dolar, Altın, Fonlar)"
+            title="Canlı Döviz ve Altın Kurlarını Güncelle (Dolar, Euro, Altın)"
             className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-white/5 active:scale-95 cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshingRates ? 'animate-spin text-amber-400' : ''}`} />
