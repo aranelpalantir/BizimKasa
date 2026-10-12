@@ -15,7 +15,8 @@ import {
   isGoogleDriveConfigured, 
   isGoogleDriveTokenValid, 
   requestGoogleAccessToken, 
-  syncWithGoogleDrive 
+  syncWithGoogleDrive,
+  getLastSyncTime 
 } from '../../services/googleDriveService';
 import { formatLastModified, formatFullDateTime } from '../../utils/dateUtils';
 import type { Account, AssetTransaction, MarketRate, CashFlowEntry, Group } from '../../types/finance';
@@ -56,16 +57,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Google Drive Cloud Sync quick renewal state
   const [isCloudConfigured, setIsCloudConfigured] = useState(isGoogleDriveConfigured());
   const [isCloudTokenValid, setIsCloudTokenValid] = useState(isGoogleDriveTokenValid());
+  const [lastSyncTime, setLastSyncTimeState] = useState<string | null>(getLastSyncTime());
   const [isRenewingCloud, setIsRenewingCloud] = useState(false);
 
   useEffect(() => {
     const checkCloudState = () => {
       setIsCloudConfigured(isGoogleDriveConfigured());
       setIsCloudTokenValid(isGoogleDriveTokenValid());
+      setLastSyncTimeState(getLastSyncTime());
     };
+    window.addEventListener('bizimkasa:sync_updated', checkCloudState);
     window.addEventListener('focus', checkCloudState);
     document.addEventListener('visibilitychange', checkCloudState);
     return () => {
+      window.removeEventListener('bizimkasa:sync_updated', checkCloudState);
       window.removeEventListener('focus', checkCloudState);
       document.removeEventListener('visibilitychange', checkCloudState);
     };
@@ -76,7 +81,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     try {
       await requestGoogleAccessToken(false);
       setIsCloudTokenValid(true);
-      await syncWithGoogleDrive();
+      const res = await syncWithGoogleDrive();
+      setLastSyncTimeState(getLastSyncTime());
+      if (res.action === 'downloaded') {
+        setTimeout(() => window.location.reload(), 500);
+      }
     } catch (err) {
       console.warn('Dashboard üzerinden oturum yenileme hatası:', err);
     } finally {
@@ -190,13 +199,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           )}
 
-          <div 
-            title={`Sistemdeki Son Veri Değişikliği: ${formatFullDateTime(lastModifiedAt)}`}
-            className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-default"
-          >
-            <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="text-slate-400">Son Değişiklik:</span>
-            <span className="font-semibold text-amber-300">{formatLastModified(lastModifiedAt)}</span>
+          <div className="flex items-center flex-wrap gap-2.5 sm:gap-4">
+            {isCloudConfigured && (
+              <div 
+                title={lastSyncTime ? `Son Bulut Eşitlemesi: ${formatFullDateTime(lastSyncTime)}` : 'Bulut eşitlemesi aktif, henüz senkronize edilmedi'}
+                className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-default"
+              >
+                <Cloud className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="text-slate-400">Bulut:</span>
+                <span className="font-semibold text-emerald-400">
+                  {lastSyncTime ? formatLastModified(lastSyncTime) : 'Bekliyor'}
+                </span>
+              </div>
+            )}
+
+            <div 
+              title={`Sistemdeki Son Veri Değişikliği: ${formatFullDateTime(lastModifiedAt)}`}
+              className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-default"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-slate-400">Son Değişiklik:</span>
+              <span className="font-semibold text-amber-300">{formatLastModified(lastModifiedAt)}</span>
+            </div>
           </div>
         </div>
       )}

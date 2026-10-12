@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Eye, EyeOff, Lock, RefreshCw, Smartphone, Clock } from 'lucide-react';
+import { Shield, Eye, EyeOff, Lock, RefreshCw, Smartphone, Clock, Cloud } from 'lucide-react';
 import { GithubIcon } from './GithubIcon';
 import { APP_VERSION } from '../../version';
 import type { AppSettings } from '../../types/finance';
@@ -15,6 +15,8 @@ interface NavbarProps {
   onOpenInstallModal?: () => void;
   isStandalone?: boolean;
   lastModifiedAt?: string;
+  isCloudConfigured?: boolean;
+  lastSyncTime?: string | null;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -26,7 +28,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onGoDashboard,
   onOpenInstallModal,
   isStandalone,
-  lastModifiedAt
+  lastModifiedAt,
+  isCloudConfigured,
+  lastSyncTime
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-white/10 px-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-3 select-none">
@@ -53,15 +57,31 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-400 -mt-0.5">Ortak Bütçe & Varlık Portföyü</p>
-            {/* Mobile Last Modified Indicator */}
-            {lastModifiedAt && (
-              <div 
-                title={`Sistemdeki Son Veri Değişikliği: ${formatFullDateTime(lastModifiedAt)}`}
-                className="flex sm:hidden items-center gap-1 text-[10px] text-amber-300 font-medium mt-0.5"
-              >
-                <Clock className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                <span className="text-slate-400 text-[9.5px]">Son işlem:</span>
-                <span className="text-amber-300 font-semibold text-[9.5px]">{formatMobileLastModified(lastModifiedAt)}</span>
+            {/* Mobile Last Modified & Cloud Sync Indicators */}
+            {(lastModifiedAt || isCloudConfigured) && (
+              <div className="flex sm:hidden items-center flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] font-medium mt-0.5">
+                {lastModifiedAt && (
+                  <div 
+                    title={`Sistemdeki Son Yerel Değişiklik: ${formatFullDateTime(lastModifiedAt)}`}
+                    className="flex items-center gap-1 text-amber-300"
+                  >
+                    <Clock className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                    <span className="text-slate-400 text-[9.5px]">{isCloudConfigured ? 'İşlem:' : 'Son işlem:'}</span>
+                    <span className="text-amber-300 font-semibold text-[9.5px]">{formatMobileLastModified(lastModifiedAt)}</span>
+                  </div>
+                )}
+                {isCloudConfigured && (
+                  <div 
+                    title={lastSyncTime ? `Son Bulut Eşitlemesi: ${formatFullDateTime(lastSyncTime)}` : 'Bulut eşitlemesi aktif, henüz senkronize edilmedi'}
+                    className="flex items-center gap-1 text-emerald-400"
+                  >
+                    <Cloud className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                    <span className="text-slate-400 text-[9.5px]">Bulut:</span>
+                    <span className="text-emerald-400 font-semibold text-[9.5px]">
+                      {lastSyncTime ? formatMobileLastModified(lastSyncTime) : 'Bekliyor'}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -69,6 +89,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {/* Desktop Cloud Sync Badge */}
+          {isCloudConfigured && (
+            <div 
+              title={lastSyncTime ? `Son Bulut Eşitlemesi: ${formatFullDateTime(lastSyncTime)}` : 'Bulut eşitlemesi aktif, henüz senkronize edilmedi'}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-emerald-500/20 text-xs text-slate-300 transition-colors shadow-sm select-none cursor-default mr-0.5"
+            >
+              <Cloud className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="text-slate-400">Bulut:</span>
+              <span className="font-semibold text-emerald-400">
+                {lastSyncTime ? formatLastModified(lastSyncTime) : 'Bekliyor'}
+              </span>
+            </div>
+          )}
+
           {/* Desktop Last Modified Badge */}
           {lastModifiedAt && (
             <div 

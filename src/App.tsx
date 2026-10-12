@@ -8,7 +8,8 @@ import {
   syncWithGoogleDrive, 
   requestGoogleAccessTokenSilently, 
   isGoogleDriveConfigured, 
-  isGoogleDriveTokenValid 
+  isGoogleDriveTokenValid,
+  getLastSyncTime 
 } from './services/googleDriveService';
 import { Navbar } from './components/common/Navbar';
 import { BottomNav, type TabType } from './components/common/BottomNav';
@@ -49,6 +50,24 @@ export const App: React.FC = () => {
   const [autoSyncPinInput, setAutoSyncPinInput] = useState('');
   const [autoSyncPinError, setAutoSyncPinError] = useState<string | null>(null);
   const [isAutoSyncSubmitting, setIsAutoSyncSubmitting] = useState(false);
+  const [lastSyncTime, setLastSyncTimeState] = useState<string | null>(getLastSyncTime());
+  const [isCloudConfigured, setIsCloudConfigured] = useState(isGoogleDriveConfigured());
+
+  // Listen for sync updates and window focus to keep cloud sync status fresh
+  useEffect(() => {
+    const handleSyncUpdate = () => {
+      setLastSyncTimeState(getLastSyncTime());
+      setIsCloudConfigured(isGoogleDriveConfigured());
+    };
+    window.addEventListener('bizimkasa:sync_updated', handleSyncUpdate);
+    window.addEventListener('focus', handleSyncUpdate);
+    document.addEventListener('visibilitychange', handleSyncUpdate);
+    return () => {
+      window.removeEventListener('bizimkasa:sync_updated', handleSyncUpdate);
+      window.removeEventListener('focus', handleSyncUpdate);
+      document.removeEventListener('visibilitychange', handleSyncUpdate);
+    };
+  }, []);
 
   // Live queries from Dexie IndexedDB
   const groups = useLiveQuery(() => db.groups.orderBy('order').toArray(), []) || [];
@@ -322,6 +341,8 @@ export const App: React.FC = () => {
         onOpenInstallModal={() => setIsInstallModalOpen(true)}
         isStandalone={isStandalone}
         lastModifiedAt={lastModifiedAt}
+        isCloudConfigured={isCloudConfigured}
+        lastSyncTime={lastSyncTime}
       />
 
       {/* Main Content Area */}

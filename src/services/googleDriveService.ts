@@ -88,6 +88,9 @@ export function saveAccessToken(token: string, expiresInSec: number) {
   localStorage.setItem(STORAGE_KEY_TOKEN, token);
   localStorage.setItem(STORAGE_KEY_TOKEN_EXP, expTime.toString());
   localStorage.setItem(STORAGE_KEY_CONNECTED, 'true');
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('bizimkasa:sync_updated'));
+  }
 }
 
 export function clearStoredToken(): void {
@@ -99,6 +102,10 @@ export function disconnectGoogleDrive(): void {
   clearStoredToken();
   localStorage.removeItem(STORAGE_KEY_CONNECTED);
   localStorage.removeItem(STORAGE_KEY_USER_EMAIL);
+  localStorage.removeItem(STORAGE_KEY_LAST_SYNC);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('bizimkasa:sync_updated', { detail: null }));
+  }
 }
 
 export function getConnectedUserEmail(): string | null {
@@ -349,7 +356,9 @@ export async function uploadToGoogleDrive(password?: string): Promise<{ success:
       throw new Error(`Drive güncelleme başarısız (${res.status}): ${await res.text()}`);
     }
     const updated = await res.json();
-    return { success: true, modifiedTime: updated.modifiedTime || new Date().toISOString() };
+    const modifiedTime = updated.modifiedTime || new Date().toISOString();
+    setLastSyncTime(modifiedTime);
+    return { success: true, modifiedTime };
   } else {
     // Yeni dosya oluştur (multipart upload)
     const metadata = {
@@ -388,7 +397,9 @@ export async function uploadToGoogleDrive(password?: string): Promise<{ success:
       throw new Error(`Drive dosyası oluşturulamadı (${res.status}): ${await res.text()}`);
     }
     const created = await res.json();
-    return { success: true, modifiedTime: created.modifiedTime || new Date().toISOString() };
+    const modifiedTime = created.modifiedTime || new Date().toISOString();
+    setLastSyncTime(modifiedTime);
+    return { success: true, modifiedTime };
   }
 }
 
@@ -456,6 +467,9 @@ export function getLastSyncTime(): string | null {
 
 export function setLastSyncTime(iso: string): void {
   localStorage.setItem(STORAGE_KEY_LAST_SYNC, iso);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('bizimkasa:sync_updated', { detail: iso }));
+  }
 }
 
 export interface AutoSyncResult {
