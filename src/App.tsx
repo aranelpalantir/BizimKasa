@@ -18,7 +18,6 @@ import { LockScreen } from './components/auth/LockScreen';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { MonthlyMatrixView } from './components/budget/MonthlyMatrixView';
 import { AssetDashboard } from './components/assets/AssetDashboard';
-import { InvestmentPlanner } from './components/investment/InvestmentPlanner';
 import { SettingsView } from './components/settings/SettingsView';
 import { PwaInstallModal } from './components/common/PwaInstallModal';
 import { Modal } from './components/common/Modal';
@@ -80,7 +79,6 @@ export const App: React.FC = () => {
   const cashFlowEntries = useLiveQuery(() => db.cashFlowEntries.toArray(), []) || [];
   const transactions = useLiveQuery(() => db.transactions.toArray(), []) || [];
   const marketRates = useLiveQuery(() => db.marketRates.toArray(), []) || [];
-  const investmentPlans = useLiveQuery(() => db.investmentPlans.toArray(), []) || [];
   const lastModifiedRecord = useLiveQuery(() => db.settings.get('lastModifiedAt'), []);
   const lastModifiedAt = lastModifiedRecord?.value as string | undefined;
 
@@ -406,16 +404,6 @@ export const App: React.FC = () => {
             accounts={accounts}
             transactions={transactions}
             rates={marketRates}
-            hideValues={settings.hideValuesOnScreen}
-          />
-        )}
-
-        {activeTab === 'plan' && (
-          <InvestmentPlanner
-            groups={groups}
-            accounts={accounts}
-            plans={investmentPlans}
-            transactions={transactions}
             hideValues={settings.hideValuesOnScreen}
           />
         )}

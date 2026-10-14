@@ -17,7 +17,6 @@ test.describe('Dashboard / Ana Sayfa', () => {
     await expect(bottomNav.getByRole('button', { name: 'Özet' })).toBeVisible();
     await expect(bottomNav.getByRole('button', { name: 'Gelir & Gider' })).toBeVisible();
     await expect(bottomNav.getByRole('button', { name: 'Varlıklar' })).toBeVisible();
-    await expect(bottomNav.getByRole('button', { name: 'Yatırım', exact: true })).toBeVisible();
     await expect(bottomNav.getByRole('button', { name: 'Ayarlar' })).toBeVisible();
 
     // Group filter bar

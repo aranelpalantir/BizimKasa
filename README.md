@@ -59,31 +59,25 @@ Uygulamaya tarayıcınızdan veya telefonunuzdan doğrudan erişebilirsiniz:
 - **Maliyet Esaslı Hatasız Değerleme:** Fonların piyasa fiyatı kullanıcı tarafından girilene kadar kod içerisinden sahte fiyat dayatılmaz; değerleme motoru otomatik olarak alış maliyetini (`avgCost`) kullanarak sanal kâr/zarar oluşturmaz ve net varlığı tam korur.
 - **Toplu Hareket Yönetimi & CSV İçe Aktarma:** Alım/satım işlemlerini onay kutularıyla çoklu seçip tek seferde silebilme (`bulkDelete`); geçmiş verileri CSV ve metin yapıştırarak içeri aktarma.
 
-### 5. 🎯 Aylık Yatırım & Birikim Hedef Planlayıcısı (Target & Budget Planner)
-- **Aylık Birikim Hedefleri:** Ay bazında altın, döviz, TEFAS fonu veya nakit tasarruf hedefleri belirleme.
-- **Gerçekleşenlerle Otomatik Eşleştirme:** Kayıtlı varlık işlemlerini hedef kartlarına bağlama ve hedefin gerçekleşme yüzdesini canlı izleme.
-- **🎉 Konfeti Kutlaması:** Ayın yatırım hedefleri tamamlandığında motive edici görsel konfeti kutlaması (`canvas-confetti`).
-- **Disiplinli Birikim Takibi:** Hedeflenen bütçe ile gerçekleşen birikim tutarını anlık kıyaslama.
-
-### 6. ⚖️ Reel Kâr / Zarar & Satın Alma Gücü Karşılığı
+### 5. ⚖️ Reel Kâr / Zarar & Satın Alma Gücü Karşılığı
 - *"TL olarak kârdayım ama enflasyona ve kurlara karşı reel durumum ne?"* sorusuna net yanıt:
   - **₺ Nominal Kâr/Zarar**
   - **$ Karşılığı** (USD bazında reel değer)
   - **€ Karşılığı** (EUR bazında reel değer)
   - **Altın Karşılığı** (Gram altın bazında reel getiri)
 
-### 7. ⚡ Canlı Piyasa Kurları & Serbest Piyasa Makası
+### 6. ⚡ Canlı Piyasa Kurları & Serbest Piyasa Makası
 - **Kapsamlı Takip:** USD, EUR, Gram Altın, Çeyrek Altın, Ons ($), BIST 100, Nasdaq-100 ve TEFAS fonları.
 - **Serbest Piyasa Makası:** Kur kartına dokunarak Kapalıçarşı veya banka makas kurunu manuel girebilme veya tek tıkla canlı kura geri dönebilme.
 - **Kesintisiz & Çok Kaynaklı:** Ağ hatası durumunda alternatif API kaynaklarına düşen dayanıklı kur motoru.
 
-### 8. 🔒 Güvenlik, Gizlilik & Biyometrik Kilit
+### 7. 🔒 Güvenlik, Gizlilik & Biyometrik Kilit
 - **Biyometrik Kilit (WebAuthn):** iPhone'da **FaceID / TouchID**, Android'de **Parmak İzi / Yüz Tanıma**, Windows'ta **Windows Hello**.
 - **Sayısal PIN Koruması:** 4-6 haneli güvenli PIN klavyesi ve hassas işlemler öncesi adım yükseltme (step-up) PIN doğrulaması.
 - **Otomatik Kilit:** Uygulama arka plana atıldığında veya ekran kapandığında belirlenen sürede otomatik kilitlenme (Anında, 1 dk, 5 dk, 15 dk).
 - **Gizlilik Maskesi (Göz İkonu):** Toplu taşımada veya kalabalık ortamlarda bakiyeleri tek tıkla gizleme/maskeleme (`•••• ₺`).
 
-### 9. 💾 %100 Local-First & Askeri Düzeyde Şifreli Yedekleme (AES-256-GCM)
+### 8. 💾 %100 Local-First & Askeri Düzeyde Şifreli Yedekleme (AES-256-GCM)
 - **Tam Veri Sahipliği:** Verileriniz **asla hiçbir uzak sunucuya gönderilmez**. Tamamen tarayıcınızın kalıcı yerel veritabanında (**IndexedDB / Dexie.js**) saklanır.
 - **🛡️ Şifreli Yedek İndir (AES-256-GCM):** Belirleyeceğiniz parola ile Web Crypto API standartlarında şifrelenmiş `.json` yedek dosyası oluşturun (`bizimkasa-sifreli-yedek-YYYY-MM-DD.json`).
   - **PBKDF2-SHA256 (100.000 İterasyon):** Kaba kuvvet (brute-force) saldırılarına karşı tuzlanmış (salted) 256-bit AES anahtar türetimi.
@@ -92,7 +86,7 @@ Uygulamaya tarayıcınızdan veya telefonunuzdan doğrudan erişebilirsiniz:
 - **Standart Yedek İndir (JSON):** Hızlı kullanım ve açık metin arşivleme için standart JSON yedeği.
 - **Akıllı Geri Yükleme:** Seçilen dosyanın şifreli olup olmadığını anında algılama ve parola doğrulama ekranıyla tek tıkla geri yükleme.
 
-### 10. ☁️ Google Drive Bulut Eşitleme & Akıllı Birleştirme (Smart Two-Way Sync & Tombstones)
+### 9. ☁️ Google Drive Bulut Eşitleme & Akıllı Birleştirme (Smart Two-Way Sync & Tombstones)
 - **Cihazlar Arası Kesintisiz Eşitleme (Mobil & PC):** Sıfır sunucu kurulumuyla, telefon ve bilgisayar arasında Google Drive üzerinden otomatik çift yönlü veri senkronizasyonu.
 - **Gizli AppData Klasör Güvenliği:** Yedekler kullanıcının kişisel Google Drive dosya listesini kirletmez; yalnızca uygulamaya özel gizli `appDataFolder` alanında izole saklanır.
 - **Tek PIN ile Askeri Düzeyde Şifreleme (AES-256-GCM):** Buluta gönderilen tüm veriler yerel PIN ile cihazda şifrelenir; Google dahi verinin içeriğini veya parolasını göremez.
@@ -116,7 +110,6 @@ Uygulamaya tarayıcınızdan veya telefonunuzdan doğrudan erişebilirsiniz:
 | **Kriptografi & Güvenlik** | Web Crypto API (SubtleCrypto) | AES-256-GCM, PBKDF2-SHA256 (100k döngü), WebAuthn (FaceID/TouchID) |
 | **Grafik & Görsel** | Recharts | Varlık dağılımı ve portföy pasta grafikleri |
 | **İkonlar** | Lucide React | Modern ve tutarlı arayüz ikon seti |
-| **Efektler** | Canvas-Confetti | Hedef tamamlandığında motive edici konfeti kutlaması |
 | **Test & Kalite** | Playwright E2E | Uçtan uca otomatik test senaryoları |
 | **PWA & Offline** | Vite Plugin PWA (Workbox) | Çevrimdışı önbellekleme, Service Worker ve mobil kurulum |
 
@@ -133,7 +126,6 @@ BizimKasa/
 │   │   ├── budget/           # Yıllık ve aylık bütçe matrisi, Önceki Aydan Kopyalama Sihirbazı
 │   │   ├── common/           # Navbar, BottomNav, Hesap Düzenleme & Renk Modalı, Filtreler
 │   │   ├── dashboard/        # Konsolide Net Varlık Kartı, Aylık Nakit Akışı Kokpiti, Harcama Dağılımı, Varlık Grafiği, Kurlar
-│   │   ├── investment/       # Aylık Yatırım & Birikim Hedef Planlayıcısı (Konfeti kutlamalı)
 │   │   └── settings/         # Bulut Eşitleme, Şifreli/Standart Yedekleme ve Güvenlik Ayarları
 │   ├── constants/            # 18 renk seçeneği (themeColors.ts) ve TEFAS fon sözlüğü (tefasFunds.ts)
 │   ├── db/                   # Dexie.js IndexedDB v4 şeması (Tombstones desteği) ve tohum verileri

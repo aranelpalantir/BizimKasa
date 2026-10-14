@@ -20,7 +20,7 @@ interface DashboardViewProps {
   rates: MarketRate[];
   cashFlowEntries: CashFlowEntry[];
   hideValues: boolean;
-  onNavigateTab: (tab: 'budget' | 'assets' | 'plan') => void;
+  onNavigateTab: (tab: 'budget' | 'assets') => void;
   lastModifiedAt?: string;
 }
 

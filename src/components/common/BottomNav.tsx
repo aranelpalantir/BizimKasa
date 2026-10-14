@@ -1,7 +1,7 @@
 import React from 'react';
-import { LayoutDashboard, TableProperties, Coins, Target, Settings } from 'lucide-react';
+import { LayoutDashboard, TableProperties, Coins, Settings } from 'lucide-react';
 
-export type TabType = 'dashboard' | 'budget' | 'assets' | 'plan' | 'settings';
+export type TabType = 'dashboard' | 'budget' | 'assets' | 'settings';
 
 interface BottomNavProps {
   activeTab: TabType;
@@ -13,13 +13,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) 
     { id: 'dashboard' as TabType, label: 'Özet', icon: LayoutDashboard },
     { id: 'budget' as TabType, label: 'Gelir & Gider', icon: TableProperties },
     { id: 'assets' as TabType, label: 'Varlıklar', icon: Coins },
-    { id: 'plan' as TabType, label: 'Yatırım', icon: Target },
     { id: 'settings' as TabType, label: 'Ayarlar', icon: Settings },
   ];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 glass-panel border-t border-white/10 px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom,0px))] backdrop-blur-xl">
-      <div className="max-w-md mx-auto grid grid-cols-5 gap-1">
+      <div className="max-w-md mx-auto grid grid-cols-4 gap-1">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
