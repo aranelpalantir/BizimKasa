@@ -108,22 +108,49 @@ export class BizimKasaDatabase extends Dexie {
         touchLastModified();
       };
 
-      table.hook('creating', changeHandler);
+      table.hook('creating', function (this: any, primKey, obj) {
+        if (isTrackingSuppressed) return;
+        const key = primKey || obj?.id;
+        if (key) {
+          const idStr = String(key);
+          const removeTombstone = () => {
+            Dexie.ignoreTransaction(() => {
+              db.deletedRecords.delete(`${tableName}:${idStr}`).catch(() => {});
+            });
+          };
+          if (this) {
+            this.onsuccess = removeTombstone;
+          } else {
+            removeTombstone();
+          }
+        }
+        touchLastModified();
+      });
+
       table.hook('updating', changeHandler);
-      table.hook('deleting', (primKey, _obj, transaction) => {
+
+      table.hook('deleting', function (this: any, primKey, _obj, _transaction) {
         if (isTrackingSuppressed) return;
         const idStr = String(primKey);
         const iso = new Date().toISOString();
-        try {
-          transaction.table('deletedRecords').put({
-            id: `${tableName}:${idStr}`,
-            recordId: idStr,
-            tableName,
-            deletedAt: iso
+        
+        const saveTombstone = () => {
+          Dexie.ignoreTransaction(() => {
+            db.deletedRecords.put({
+              id: `${tableName}:${idStr}`,
+              recordId: idStr,
+              tableName,
+              deletedAt: iso
+            }).catch(e => console.warn('Failed to record deletion tombstone:', e));
           });
-        } catch (e) {
-          console.warn('Failed to record deletion tombstone:', e);
+        };
+
+        if (this) {
+          this.onsuccess = saveTombstone;
+        } else {
+          saveTombstone();
         }
+
         touchLastModified(iso);
       });
     };

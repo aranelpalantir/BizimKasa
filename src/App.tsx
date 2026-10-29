@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getLastModifiedTimestamp, onDatabaseModified, cleanupExpiredTombstones } from './db/db';
-import { seedInitialDataIfNeeded, forceResetWithDummyData } from './db/seed';
+import { seedInitialDataIfNeeded } from './db/seed';
 import { fetchLiveRatesMultiSource, cleanupDeprecatedRates, cleanupDuplicateAssetAccounts, syncTefasFundRatesWithAssets } from './services/ratesService';
 import { getSettings, updateSettings, setSessionPin } from './services/securityService';
 import { 
@@ -154,13 +154,7 @@ export const App: React.FC = () => {
     if (clearedRecord && clearedRecord.value) {
       // User explicitly cleared data; do not auto-seed dummy data
     } else {
-      const dummyVerRecord = await db.settings.get('dummyDataVersion');
-      if (!dummyVerRecord || dummyVerRecord.value < 6) {
-        await forceResetWithDummyData();
-        await db.settings.put({ key: 'dummyDataVersion', value: 6 });
-      } else {
-        await seedInitialDataIfNeeded();
-      }
+      await seedInitialDataIfNeeded();
     }
 
     const loadedSettings = await getSettings();

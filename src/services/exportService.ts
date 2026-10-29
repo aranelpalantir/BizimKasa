@@ -238,14 +238,14 @@ export async function smartMergeBackupToDatabase(
         'groups',
         localGroups,
         remoteData.groups || [],
-        (g: any) => g.updatedAt
+        (g: any) => g.updatedAt || g.createdAt
       );
 
       const mergedAccounts = mergeEntities(
         'accounts',
         localAccounts,
         remoteData.accounts || [],
-        (a: any) => a.updatedAt
+        (a: any) => a.updatedAt || a.createdAt
       );
 
       const mergedTxs = mergeEntities(
@@ -259,14 +259,14 @@ export async function smartMergeBackupToDatabase(
         'cashFlowEntries',
         localEntries,
         remoteData.cashFlowEntries || [],
-        (e: any) => e.updatedAt
+        (e: any) => e.updatedAt || e.createdAt
       );
 
       const mergedPlans = mergeEntities(
         'investmentPlans',
         localPlans,
         remoteData.investmentPlans || [],
-        (p: any) => p.updatedAt
+        (p: any) => p.updatedAt || p.createdAt
       );
 
       // Kurları birleştir
